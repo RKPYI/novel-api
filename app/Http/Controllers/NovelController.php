@@ -217,7 +217,7 @@ class NovelController extends Controller
     public function latest()
     {
         $novels = Novel::with('genres')
-            ->orderBy('created_at', 'desc')
+            ->orderBy('updated_at', 'desc')
             ->limit(12)
             ->get();
 
