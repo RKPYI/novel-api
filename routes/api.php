@@ -36,6 +36,9 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware(['auth:sanctum']);
 
+// Search operations
+Route::get('novels/search', [NovelController::class, 'search']);
+
 // Novel routes - read operations
 Route::get('novels/popular', [NovelController::class, 'popular']);
 Route::get('novels/latest', [NovelController::class, 'latest']);
@@ -43,9 +46,6 @@ Route::get('novels/recommendations', [NovelController::class, 'recommendations']
 Route::get('novels/genres', [NovelController::class, 'genres']);
 Route::get('novels', [NovelController::class, 'index']);
 Route::get('novels/{slug}', [NovelController::class, 'show']);
-
-// Search operations
-Route::get('novels/search', [NovelController::class, 'search']);
 
 // Admin-only novel routes
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {

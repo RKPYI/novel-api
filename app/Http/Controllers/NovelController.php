@@ -185,7 +185,7 @@ class NovelController extends Controller
             ->where('title', 'LIKE', '%' . $query . '%')
             ->orWhere('author', 'LIKE', '%' . $query . '%')
             ->orWhere('description', 'LIKE', '%' . $query . '%')
-            ->select('id', 'title', 'author', 'description', 'cover_image', 'rating', 'status')
+            ->select('id', 'slug', 'title', 'author', 'description', 'cover_image', 'rating', 'status')
             ->limit(10)
             ->get();
 
