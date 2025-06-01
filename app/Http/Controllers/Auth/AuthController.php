@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -194,7 +195,7 @@ class AuthController extends Controller
     /**
      * Handle Google OAuth callback
      */
-    public function handleGoogleCallback(Request $request): JsonResponse
+    public function handleGoogleCallback(Request $request): RedirectResponse
     {
         try {
             $googleUser = Socialite::driver('google')->stateless()->user();
@@ -227,26 +228,52 @@ class AuthController extends Controller
             }
 
             $token = $user->createToken('auth_token')->plainTextToken;
+            $userData = [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+                'avatar' => $user->avatar,
+                'bio' => $user->bio,
+                'is_admin' => $user->isAdmin(),
+            ];
 
-            return response()->json([
-                'message' => 'Google login successful',
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => $user->role,
-                    'avatar' => $user->avatar,
-                    'bio' => $user->bio,
-                    'is_admin' => $user->isAdmin(),
-                ],
+            $frontendUrl = env('FRONTEND_URL', 'https://novel.randk.tech');
+            $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
+                'success' => 'true',
                 'token' => $token,
+                'user' => base64_encode(json_encode($userData))
             ]);
 
+            return redirect($redirectUrl);
+
+            // return response()->json([
+            //     'message' => 'Google login successful',
+            //     'user' => [
+            //         'id' => $user->id,
+            //         'name' => $user->name,
+            //         'email' => $user->email,
+            //         'role' => $user->role,
+            //         'avatar' => $user->avatar,
+            //         'bio' => $user->bio,
+            //         'is_admin' => $user->isAdmin(),
+            //     ],
+            //     'token' => $token,
+            // ]);
+
         } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Google authentication failed',
-                'error' => $e->getMessage()
-            ], 500);
+            $frontendUrl = env('FRONTEND_URL', 'https://novel.randk.tech');
+            $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
+                'error' => 'authentication_failed',
+                'message' => 'Google authentication failed'
+            ]);
+
+            return redirect($redirectUrl);
+
+            // return response()->json([
+            //     'message' => 'Google authentication failed',
+            //     'error' => $e->getMessage()
+            // ], 500);
         }
     }
 

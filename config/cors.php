@@ -19,7 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://randk.tech', 'https://www.randk.tech', 'http://localhost:3000'],
+    'allowed_origins' => ['https://randk.tech', 'https://www.randk.tech', 'https://*.randk.tech','http://localhost:3000'],
 
     'allowed_origins_patterns' => [],
 
