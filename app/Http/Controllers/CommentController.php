@@ -17,23 +17,40 @@ class CommentController extends Controller
      */
     public function index(Request $request, Novel $novel, $chapterNumber = null): JsonResponse
     {
-        $query = Comment::with(['user:id,name,avatar', 'replies.user:id,name,avatar'])
-            ->where('novel_id', $novel->id)
-            ->where('is_approved', true)
-            ->whereNull('parent_id'); // Only top-level comments
+        $baseQuery = Comment::where('novel_id', $novel->id)
+            ->where('is_approved', true);
 
         if ($chapterNumber) {
             $chapter = Chapter::where('novel_id', $novel->id)
-                ->where('chapter_number', $chapterNumber)
+                ->where('id', $chapterNumber) // Changed 'chapter_number' to 'id'
                 ->firstOrFail();
-            $query->where('chapter_id', $chapter->id);
+            $baseQuery->where('chapter_id', $chapter->id);
         } else {
-            $query->whereNull('chapter_id'); // Novel comments only
+            $baseQuery->whereNull('chapter_id'); // Novel comments only
         }
 
-        $comments = $query->orderBy('created_at', 'desc')->paginate(20);
+        // Get total count of all comments (including replies)
+        $totalCommentsCount = (clone $baseQuery)->count();
 
-        return response()->json($comments);
+        // Get paginated top-level comments
+        $topLevelCommentsQuery = (clone $baseQuery)
+            ->with(['user:id,name,avatar,role,email_verified_at', 'replies.user:id,name,avatar,role,email_verified_at', 'replies.replies'])
+            ->whereNull('parent_id')
+            ->orderBy('created_at', 'desc');
+
+        $comments = $topLevelCommentsQuery->paginate(20);
+
+        // To ensure replies also have their user data and potentially nested replies loaded
+        // This can be resource-intensive if replies are very deep.
+        // Consider if 'replies.user:id,name,avatar' is sufficient or if deeper nesting is needed.
+        // The current 'replies.user:id,name,avatar' loads user for direct replies.
+        // If you need user for replies of replies, you'd do 'replies.replies.user:id,name,avatar', etc.
+        // For now, assuming 'replies.user:id,name,avatar' is what's primarily used by frontend for replies.
+
+        return response()->json([
+            'comments' => $comments,
+            'total_comments_count' => $totalCommentsCount
+        ]);
     }
 
     /**
@@ -65,7 +82,7 @@ class CommentController extends Controller
             'is_spoiler' => $request->boolean('is_spoiler', false),
         ]);
 
-        $comment->load(['user:id,name,avatar', 'replies.user:id,name,avatar']);
+        $comment->load(['user:id,name,avatar,role,email_verified_at', 'replies.user:id,name,avatar,role,email_verified_at']);
 
         return response()->json([
             'message' => 'Comment created successfully',
@@ -102,7 +119,7 @@ class CommentController extends Controller
             'is_spoiler' => $request->boolean('is_spoiler', $comment->is_spoiler),
         ]);
 
-        $comment->load(['user:id,name,avatar', 'replies.user:id,name,avatar']);
+        $comment->load(['user:id,name,avatar,role,email_verified_at', 'replies.user:id,name,avatar,role,email_verified_at']);
 
         return response()->json([
             'message' => 'Comment updated successfully',
@@ -209,7 +226,8 @@ class CommentController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $comments = Comment::with(['user:id,name,email,avatar', 'novel:id,title', 'chapter:id,title'])
+        // For adminIndex, ensure role and email_verified_at are included if not already by default user selection
+        $comments = Comment::with(['user:id,name,email,avatar,role,email_verified_at', 'novel:id,title', 'chapter:id,title'])
             ->orderBy('created_at', 'desc')
             ->paginate(50);
 

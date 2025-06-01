@@ -88,6 +88,7 @@ class ChapterController extends Controller
         return response()->json([
             'message' => 'Chapter details',
             'novel' => [
+                'id' => $novel->id,
                 'title' => $novel->title,
                 'slug' => $novel->slug,
                 'author' => $novel->author,
