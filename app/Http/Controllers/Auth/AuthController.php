@@ -183,9 +183,18 @@ class AuthController extends Controller
     /**
      * Redirect to Google OAuth
      */
-    public function redirectToGoogle(): JsonResponse
+    public function redirectToGoogle(Request $request): JsonResponse
     {
-        $url = Socialite::driver('google')->stateless()->redirect()->getTargetUrl();
+        // Check if this is for Telescope access
+        $state = $request->get('telescope') === 'true' ? 'telescope' : null;
+        
+        $driver = Socialite::driver('google')->stateless();
+        
+        if ($state) {
+            $driver->with(['state' => $state]);
+        }
+        
+        $url = $driver->redirect()->getTargetUrl();
 
         return response()->json([
             'url' => $url
@@ -238,6 +247,19 @@ class AuthController extends Controller
                 'is_admin' => $user->isAdmin(),
             ];
 
+            // Check if this is a Telescope login request
+            $state = $request->get('state');
+            if ($state === 'telescope') {
+                // Redirect to Telescope login page with token and user data
+                $redirectUrl = url('/telescope/login-callback?' . http_build_query([
+                    'token' => $token,
+                    'user' => base64_encode(json_encode($userData))
+                ]));
+
+                return redirect($redirectUrl);
+            }
+
+            // Regular frontend redirect
             $frontendUrl = env('FRONTEND_URL', 'https://novel.randk.tech');
             $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
                 'success' => 'true',
@@ -262,6 +284,12 @@ class AuthController extends Controller
             // ]);
 
         } catch (\Exception $e) {
+            // Check if this is a Telescope login request
+            $state = $request->get('state');
+            if ($state === 'telescope') {
+                return redirect('/telescope/login?error=authentication_failed');
+            }
+
             $frontendUrl = env('FRONTEND_URL', 'https://novel.randk.tech');
             $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
                 'error' => 'authentication_failed',
