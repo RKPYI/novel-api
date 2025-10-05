@@ -81,32 +81,63 @@ class ReadingProgressController extends Controller
             ], 404);
         }
 
-        // Update or create reading progress
-        $progress = ReadingProgress::updateOrCreate(
-            [
-                'user_id' => $userId,
-                'novel_id' => $novel->id
-            ],
-            [
-                'chapter_id' => $chapter->id,
-                'updated_at' => now()
-            ]
-        );
+        // Get current progress to check if we should update
+        $currentProgress = ReadingProgress::where('user_id', $userId)
+            ->where('novel_id', $novel->id)
+            ->with(['chapter'])
+            ->first();
 
-        // Calculate progress percentage
+        $shouldUpdateProgress = false;
+        $message = 'Current reading position retrieved';
+
+        // Update progress only if:
+        // 1. No progress exists (first time reading), OR
+        // 2. Moving forward to a higher chapter number
+        if (!$currentProgress) {
+            $shouldUpdateProgress = true;
+            $message = 'Reading progress created successfully';
+        } elseif ($chapterNumber > $currentProgress->chapter->chapter_number) {
+            $shouldUpdateProgress = true;
+            $message = 'Reading progress updated successfully';
+        } else {
+            // User is going backward or jumping - don't update progress
+            $message = 'Reading position noted (progress preserved)';
+        }
+
+        if ($shouldUpdateProgress) {
+            // Update or create reading progress
+            $progress = ReadingProgress::updateOrCreate(
+                [
+                    'user_id' => $userId,
+                    'novel_id' => $novel->id
+                ],
+                [
+                    'chapter_id' => $chapter->id,
+                    'last_read_at' => now(),
+                    'updated_at' => now()
+                ]
+            );
+        } else {
+            // Keep existing progress but refresh the object
+            $progress = $currentProgress;
+        }
+
+        // Calculate progress percentage based on the SAVED progress chapter
         $totalChapters = Chapter::where('novel_id', $novel->id)->count();
         $progressPercentage = $totalChapters > 0 ?
-            round(($chapter->chapter_number / $totalChapters) * 100, 2) : 0;
+            round(($progress->chapter->chapter_number / $totalChapters) * 100, 2) : 0;
 
         return response()->json([
-            'message' => 'Reading progress updated successfully',
+            'message' => $message,
             'progress' => [
                 'novel_slug' => $novel->slug,
                 'user_id' => $userId,
-                'current_chapter' => $chapter,
+                'current_chapter' => $progress->chapter, // The saved progress chapter
+                'requested_chapter' => $chapter, // The chapter they navigated to
                 'progress_percentage' => $progressPercentage,
                 'last_read_at' => $progress->updated_at,
-                'total_chapters' => $totalChapters
+                'total_chapters' => $totalChapters,
+                'progress_updated' => $shouldUpdateProgress
             ]
         ]);
     }

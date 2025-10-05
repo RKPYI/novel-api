@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Novel extends Model
 {
     protected $fillable = [
-        'title', 'author', 'slug', 'description', 'status', 'cover_image',
+        'user_id', 'title', 'author', 'slug', 'description', 'status', 'cover_image',
         'total_chapters', 'views', 'likes', 'rating', 'rating_count',
         'is_featured', 'is_trending', 'published_at'
     ];
@@ -22,6 +22,11 @@ class Novel extends Model
     public function chapters()
     {
         return $this->hasMany(Chapter::class)->orderBy('chapter_number');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function genres()
@@ -50,6 +55,14 @@ class Novel extends Model
     }
 
     /**
+     * Get users who have this novel in their library
+     */
+    public function libraryEntries()
+    {
+        return $this->hasMany(UserLibrary::class);
+    }
+
+    /**
      * Get top-level comments for this novel
      */
     public function topLevelComments()
@@ -65,6 +78,15 @@ class Novel extends Model
         $ratings = $this->ratings();
         $this->rating_count = $ratings->count();
         $this->rating = $this->rating_count > 0 ? round($ratings->avg('rating'), 2) : 0;
+        $this->save();
+    }
+
+    /**
+     * Recalculate and update total chapters count
+     */
+    public function updateChapterCount()
+    {
+        $this->total_chapters = $this->chapters()->count();
         $this->save();
     }
 

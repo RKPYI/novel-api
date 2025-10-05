@@ -64,7 +64,7 @@ class NovelController extends Controller
     {
         $request->validate([
             'title' => 'required|string|max:255',
-            'author' => 'required|string|max:255',
+            'author' => 'nullable|string|max:255', // Optional - defaults to user's name
             'description' => 'nullable|string',
             'cover_image' => 'nullable|url',
             'status' => 'in:ongoing,completed,hiatus',
@@ -72,9 +72,14 @@ class NovelController extends Controller
             'genres.*' => 'exists:genres,id'
         ]);
 
-        $novel = Novel::create($request->only([
-            'title', 'author', 'description', 'cover_image', 'status'
-        ]));
+        $novel = Novel::create([
+            'user_id' => $request->user()->id,
+            'title' => $request->title,
+            'author' => $request->author ?? $request->user()->name, // Use provided author name or user's name
+            'description' => $request->description,
+            'cover_image' => $request->cover_image,
+            'status' => $request->status ?? 'ongoing'
+        ]);
 
         // Attach genres if provided
         if ($request->has('genres')) {
@@ -123,6 +128,13 @@ class NovelController extends Controller
             ], 404);
         }
 
+        // Check ownership (only owner or admin can update)
+        if ($novel->user_id !== $request->user()->id && !$request->user()->isAdmin()) {
+            return response()->json([
+                'message' => 'You can only edit your own novels'
+            ], 403);
+        }
+
         $request->validate([
             'title' => 'sometimes|required|string|max:255',
             'author' => 'sometimes|required|string|max:255',
@@ -133,9 +145,15 @@ class NovelController extends Controller
             'genres.*' => 'exists:genres,id'
         ]);
 
-        $novel->update($request->only([
-            'title', 'author', 'description', 'cover_image', 'status'
-        ]));
+        $novel->update(array_filter([
+            'title' => $request->title,
+            'author' => $request->author,
+            'description' => $request->description,
+            'cover_image' => $request->cover_image,
+            'status' => $request->status
+        ], function($value) {
+            return $value !== null;
+        }));
 
         // Update genres if provided
         if ($request->has('genres')) {
@@ -151,13 +169,20 @@ class NovelController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $slug)
+    public function destroy(Request $request, string $slug)
     {
         $novel = Novel::where('slug', $slug)->first();
         if (!$novel) {
             return response()->json([
                 'message' => 'Novel not found'
             ], 404);
+        }
+
+        // Check ownership (only owner or admin can delete)
+        if ($novel->user_id !== $request->user()->id && !$request->user()->isAdmin()) {
+            return response()->json([
+                'message' => 'You can only delete your own novels'
+            ], 403);
         }
 
         $novel->delete();
@@ -185,9 +210,13 @@ class NovelController extends Controller
             ->where('title', 'LIKE', '%' . $query . '%')
             ->orWhere('author', 'LIKE', '%' . $query . '%')
             ->orWhere('description', 'LIKE', '%' . $query . '%')
-            ->select('id', 'slug', 'title', 'author', 'description', 'cover_image', 'rating', 'status')
             ->limit(10)
-            ->get();
+            ->get()
+            ->map(function($novel) {
+                // Ensure chapter count is accurate
+                $novel->total_chapters = $novel->chapters()->count();
+                return $novel;
+            });
 
         return response()->json([
             'message' => 'Search results for: ' . $query,

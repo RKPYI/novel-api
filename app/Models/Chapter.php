@@ -53,4 +53,28 @@ class Chapter extends Model
             ->orderBy('chapter_number', 'desc')
             ->first();
     }
+
+    /**
+     * Boot method to handle model events
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        // When a chapter is created, increment novel's total_chapters
+        static::created(function ($chapter) {
+            if ($chapter->novel) {
+                $chapter->novel->increment('total_chapters');
+                $chapter->novel->touch(); // Update updated_at timestamp
+            }
+        });
+
+        // When a chapter is deleted, decrement novel's total_chapters
+        static::deleted(function ($chapter) {
+            if ($chapter->novel) {
+                $chapter->novel->decrement('total_chapters');
+                $chapter->novel->touch(); // Update updated_at timestamp
+            }
+        });
+    }
 }

@@ -66,7 +66,9 @@ class User extends Authenticatable implements MustVerifyEmail
 
     // User roles
     const ROLE_USER = 0;
-    const ROLE_ADMIN = 1;
+    const ROLE_AUTHOR = 1;
+    const ROLE_MODERATOR = 2;
+    const ROLE_ADMIN = 3;
 
     /**
      * Check if user is admin
@@ -74,6 +76,38 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isAdmin(): bool
     {
         return $this->role === self::ROLE_ADMIN;
+    }
+
+    /**
+     * Check if user can create novels
+     */
+    public function canCreateNovels(): bool
+    {
+        return in_array($this->role, [self::ROLE_AUTHOR, self::ROLE_MODERATOR, self::ROLE_ADMIN]);
+    }
+
+    /**
+     * Check if user is an author
+     */
+    public function isAuthor(): bool
+    {
+        return $this->role === self::ROLE_AUTHOR;
+    }
+
+    /**
+     * Check if user is a moderator
+     */
+    public function isModerator(): bool
+    {
+        return $this->role === self::ROLE_MODERATOR;
+    }
+
+    /**
+     * Check if user can moderate content
+     */
+    public function canModerate(): bool
+    {
+        return in_array($this->role, [self::ROLE_MODERATOR, self::ROLE_ADMIN]);
     }
 
     /**
@@ -143,6 +177,56 @@ class User extends Authenticatable implements MustVerifyEmail
     public function commentVotes()
     {
         return $this->hasMany(CommentVote::class);
+    }
+
+    /**
+     * Get the user's author application
+     */
+    public function authorApplication()
+    {
+        return $this->hasOne(AuthorApplication::class);
+    }
+
+    /**
+     * Get author applications reviewed by this user (for admins)
+     */
+    public function reviewedApplications()
+    {
+        return $this->hasMany(AuthorApplication::class, 'reviewed_by');
+    }
+
+    /**
+     * Get the user's library entries
+     */
+    public function library()
+    {
+        return $this->hasMany(UserLibrary::class);
+    }
+
+    /**
+     * Get the user's notifications
+     */
+    public function notifications()
+    {
+        return $this->hasMany(Notification::class)->orderBy('created_at', 'desc');
+    }
+
+    /**
+     * Check if user has submitted an author application
+     */
+    public function hasAuthorApplication(): bool
+    {
+        return $this->authorApplication()->exists();
+    }
+
+    /**
+     * Check if user has a pending author application
+     */
+    public function hasPendingAuthorApplication(): bool
+    {
+        return $this->authorApplication()
+            ->where('status', AuthorApplication::STATUS_PENDING)
+            ->exists();
     }
 
     /**

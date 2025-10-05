@@ -18,11 +18,13 @@ class Comment extends Model
         'dislikes',
         'is_spoiler',
         'is_approved',
+        'edited_at',
     ];
 
     protected $casts = [
         'is_spoiler' => 'boolean',
         'is_approved' => 'boolean',
+        'edited_at' => 'datetime',
     ];
 
     /**
@@ -105,5 +107,21 @@ class Comment extends Model
         $this->likes = $this->votes()->where('is_upvote', true)->count();
         $this->dislikes = $this->votes()->where('is_upvote', false)->count();
         $this->save();
+    }
+
+    /**
+     * Check if the comment has been edited
+     */
+    public function isEdited(): bool
+    {
+        return !is_null($this->edited_at);
+    }
+
+    /**
+     * Get formatted edited time for display
+     */
+    public function getEditedTimeAttribute(): ?string
+    {
+        return $this->edited_at ? $this->edited_at->diffForHumans() : null;
     }
 }

@@ -54,6 +54,68 @@ class CommentController extends Controller
     }
 
     /**
+     * Get votes for multiple comments by IDs.
+     * Example: GET /comments/votes?comment_ids=12,13,14
+     */
+    public function bulkVotes(Request $request): JsonResponse
+    {
+        $idsParam = $request->query('comment_ids');
+
+        if (is_null($idsParam) || $idsParam === '') {
+            return response()->json([ 'message' => 'comment_ids query parameter is required' ], 400);
+        }
+
+        // Accept CSV or JSON array
+        if (is_string($idsParam)) {
+            $ids = array_filter(array_map('trim', explode(',', $idsParam)), function ($v) {
+                return $v !== '';
+            });
+        } elseif (is_array($idsParam)) {
+            $ids = $idsParam;
+        } else {
+            return response()->json([ 'message' => 'Invalid comment_ids format' ], 400);
+        }
+
+        // Cast to integers and unique
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+
+        if (empty($ids)) {
+            return response()->json([ 'message' => 'No valid comment ids provided' ], 400);
+        }
+
+        $result = [];
+        $userId = $request->user()?->id;
+
+        // If not authenticated, return all nulls
+        if (!$userId) {
+            foreach ($ids as $id) {
+                $result[$id] = ['vote' => null];
+            }
+            return response()->json($result);
+        }
+
+        // Get user's votes for all comments in one query
+        $userVotes = CommentVote::whereIn('comment_id', $ids)
+            ->where('user_id', $userId)
+            ->get()
+            ->keyBy('comment_id');
+
+        // Build result matching getUserVote format
+        foreach ($ids as $id) {
+            $vote = $userVotes->get($id);
+
+            $result[$id] = [
+                'vote' => $vote ? [
+                    'is_upvote' => $vote->is_upvote,
+                    'created_at' => $vote->created_at,
+                ] : null
+            ];
+        }
+
+        return response()->json($result);
+    }
+
+    /**
      * Store a new comment
      */
     public function store(Request $request): JsonResponse
@@ -117,6 +179,7 @@ class CommentController extends Controller
         $comment->update([
             'content' => $request->content,
             'is_spoiler' => $request->boolean('is_spoiler', $comment->is_spoiler),
+            'edited_at' => now(),
         ]);
 
         $comment->load(['user:id,name,avatar,role,email_verified_at', 'replies.user:id,name,avatar,role,email_verified_at']);
