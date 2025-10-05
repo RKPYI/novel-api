@@ -37,17 +37,32 @@ class UserLibraryController extends Controller
 
         $library = $query->paginate(20);
 
+        // Get status counts using GROUP BY (1 query instead of 6)
+        $statusCounts = UserLibrary::where('user_id', $user->id)
+            ->selectRaw('status, COUNT(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status')
+            ->toArray();
+
+        // Get favorites count (1 additional query)
+        $favoritesCount = UserLibrary::where('user_id', $user->id)
+            ->where('is_favorite', true)
+            ->count();
+
+        // Calculate total from status counts
+        $total = array_sum($statusCounts);
+
         return response()->json([
             'message' => 'User library retrieved successfully',
             'library' => $library,
             'stats' => [
-                'total' => UserLibrary::where('user_id', $user->id)->count(),
-                'want_to_read' => UserLibrary::where('user_id', $user->id)->where('status', UserLibrary::STATUS_WANT_TO_READ)->count(),
-                'reading' => UserLibrary::where('user_id', $user->id)->where('status', UserLibrary::STATUS_READING)->count(),
-                'completed' => UserLibrary::where('user_id', $user->id)->where('status', UserLibrary::STATUS_COMPLETED)->count(),
-                'dropped' => UserLibrary::where('user_id', $user->id)->where('status', UserLibrary::STATUS_DROPPED)->count(),
-                'on_hold' => UserLibrary::where('user_id', $user->id)->where('status', UserLibrary::STATUS_ON_HOLD)->count(),
-                'favorites' => UserLibrary::where('user_id', $user->id)->where('is_favorite', true)->count(),
+                'total' => $total,
+                'want_to_read' => $statusCounts[UserLibrary::STATUS_WANT_TO_READ] ?? 0,
+                'reading' => $statusCounts[UserLibrary::STATUS_READING] ?? 0,
+                'completed' => $statusCounts[UserLibrary::STATUS_COMPLETED] ?? 0,
+                'dropped' => $statusCounts[UserLibrary::STATUS_DROPPED] ?? 0,
+                'on_hold' => $statusCounts[UserLibrary::STATUS_ON_HOLD] ?? 0,
+                'favorites' => $favoritesCount,
             ]
         ]);
     }

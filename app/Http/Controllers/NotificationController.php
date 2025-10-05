@@ -32,12 +32,21 @@ class NotificationController extends Controller
 
         $notifications = $query->paginate(20);
 
+        // Get all stats in a single query using CASE statements
+        $stats = Notification::where('user_id', $user->id)
+            ->selectRaw('
+                COUNT(*) as total,
+                SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread,
+                SUM(CASE WHEN is_read = 1 THEN 1 ELSE 0 END) as `read`
+            ')
+            ->first();
+
         return response()->json([
             'notifications' => $notifications,
             'stats' => [
-                'total' => Notification::where('user_id', $user->id)->count(),
-                'unread' => Notification::where('user_id', $user->id)->unread()->count(),
-                'read' => Notification::where('user_id', $user->id)->read()->count(),
+                'total' => (int) $stats->total,
+                'unread' => (int) $stats->unread,
+                'read' => (int) $stats->read,
             ]
         ]);
     }

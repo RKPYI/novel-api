@@ -21,15 +21,22 @@ class RatingController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
+        // Get rating distribution in a single query using GROUP BY
+        $breakdown = Rating::where('novel_id', $novel->id)
+            ->selectRaw('rating, COUNT(*) as count')
+            ->groupBy('rating')
+            ->pluck('count', 'rating')
+            ->toArray();
+
         $stats = [
             'average_rating' => $novel->rating,
             'total_ratings' => $novel->rating_count,
             'rating_breakdown' => [
-                '5' => Rating::where('novel_id', $novel->id)->where('rating', 5)->count(),
-                '4' => Rating::where('novel_id', $novel->id)->where('rating', 4)->count(),
-                '3' => Rating::where('novel_id', $novel->id)->where('rating', 3)->count(),
-                '2' => Rating::where('novel_id', $novel->id)->where('rating', 2)->count(),
-                '1' => Rating::where('novel_id', $novel->id)->where('rating', 1)->count(),
+                '5' => $breakdown[5] ?? 0,
+                '4' => $breakdown[4] ?? 0,
+                '3' => $breakdown[3] ?? 0,
+                '2' => $breakdown[2] ?? 0,
+                '1' => $breakdown[1] ?? 0,
             ]
         ];
 
