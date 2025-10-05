@@ -307,40 +307,18 @@
         // Check if returning from Google OAuth (for Telescope login-callback)
         window.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
-            const token = urlParams.get('token');
-            const user = urlParams.get('user');
             const error = urlParams.get('error');
 
             if (error) {
-                errorMessage.textContent = 'Google authentication failed. Please try again.';
-                errorMessage.classList.add('show');
-                return;
-            }
+                const errorMessages = {
+                    'authentication_failed': 'Google authentication failed. Please try again.',
+                    'not_admin': 'Access denied. Only administrators can access Telescope.',
+                    'user_not_found': 'User not found. Please contact support.',
+                    'invalid_data': 'Invalid authentication data. Please try again.'
+                };
 
-            if (token && user) {
-                try {
-                    const userData = JSON.parse(atob(user));
-                    
-                    if (userData.is_admin) {
-                        successMessage.textContent = '✓ Google login successful! Redirecting to Telescope...';
-                        successMessage.classList.add('show');
-                        
-                        // Store token
-                        localStorage.setItem('auth_token', token);
-                        
-                        // Redirect to Telescope
-                        setTimeout(() => {
-                            window.location.href = '/telescope';
-                        }, 1000);
-                    } else {
-                        errorMessage.textContent = '⚠ Access denied. Only administrators can access Telescope.';
-                        errorMessage.classList.add('show');
-                    }
-                } catch (e) {
-                    console.error('Error parsing user data:', e);
-                    errorMessage.textContent = 'An error occurred. Please try again.';
-                    errorMessage.classList.add('show');
-                }
+                errorMessage.textContent = errorMessages[error] || 'An error occurred. Please try again.';
+                errorMessage.classList.add('show');
             }
         });
 
@@ -364,38 +342,28 @@
                 // First, get CSRF token
                 await fetch('/sanctum/csrf-cookie');
 
-                // Login request
-                const response = await fetch('/api/auth/login', {
+                // Login request to Telescope login endpoint (creates session)
+                const response = await fetch('/telescope/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
                     },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify({ email, password }),
+                    credentials: 'same-origin' // Important for session cookies
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
-                    // Check if user is admin
-                    if (data.user && data.user.is_admin) {
-                        successMessage.textContent = '✓ Login successful! Redirecting to Telescope...';
-                        successMessage.classList.add('show');
+                    successMessage.textContent = '✓ Login successful! Redirecting to Telescope...';
+                    successMessage.classList.add('show');
 
-                        // Store token
-                        localStorage.setItem('auth_token', data.token);
-
-                        // Redirect to Telescope after a short delay
-                        setTimeout(() => {
-                            window.location.href = '/telescope';
-                        }, 1000);
-                    } else {
-                        errorMessage.textContent = '⚠ Access denied. Only administrators can access Telescope.';
-                        errorMessage.classList.add('show');
-                        loginBtn.disabled = false;
-                        loader.classList.remove('show');
-                    }
+                    // Redirect to Telescope after a short delay
+                    setTimeout(() => {
+                        window.location.href = data.redirect || '/telescope';
+                    }, 1000);
                 } else {
                     errorMessage.textContent = data.message || 'Invalid email or password';
                     errorMessage.classList.add('show');
