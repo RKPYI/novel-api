@@ -211,12 +211,7 @@ class NovelController extends Controller
             ->orWhere('author', 'LIKE', '%' . $query . '%')
             ->orWhere('description', 'LIKE', '%' . $query . '%')
             ->limit(10)
-            ->get()
-            ->map(function($novel) {
-                // Ensure chapter count is accurate
-                $novel->total_chapters = $novel->chapters()->count();
-                return $novel;
-            });
+            ->get();
 
         return response()->json([
             'message' => 'Search results for: ' . $query,

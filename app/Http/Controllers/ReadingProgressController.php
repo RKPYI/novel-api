@@ -29,12 +29,12 @@ class ReadingProgressController extends Controller
                 'current_chapter' => null,
                 'progress_percentage' => 0,
                 'last_read_at' => null,
-                'total_chapters' => Chapter::where('novel_id', $novel->id)->count()
+                'total_chapters' => $novel->total_chapters ?? 0
             ]);
         }
 
         // Calculate progress percentage
-        $totalChapters = Chapter::where('novel_id', $novel->id)->count();
+        $totalChapters = $novel->total_chapters ?? 0;
         $progressPercentage = $totalChapters > 0 ?
             round(($progress->chapter->chapter_number / $totalChapters) * 100, 2) : 0;
 
@@ -123,7 +123,7 @@ class ReadingProgressController extends Controller
         }
 
         // Calculate progress percentage based on the SAVED progress chapter
-        $totalChapters = Chapter::where('novel_id', $novel->id)->count();
+        $totalChapters = $novel->total_chapters ?? 0;
         $progressPercentage = $totalChapters > 0 ?
             round(($progress->chapter->chapter_number / $totalChapters) * 100, 2) : 0;
 
@@ -151,14 +151,15 @@ class ReadingProgressController extends Controller
 
         $progressList = ReadingProgress::where('user_id', $userId)
             ->with([
-                'novel:id,title,author,cover_image,slug',
-                'chapter:id,chapter_number,title'
+                'novel:id,title,author,cover_image,slug,total_chapters',
+                'chapter:id,chapter_number,title,novel_id'
             ])
             ->orderBy('updated_at', 'desc')
             ->get();
 
         $formattedProgress = $progressList->map(function ($progress) {
-            $totalChapters = Chapter::where('novel_id', $progress->novel_id)->count();
+            // Use the total_chapters from the novel model instead of querying
+            $totalChapters = $progress->novel->total_chapters ?? 0;
             $progressPercentage = $totalChapters > 0 ?
                 round(($progress->chapter->chapter_number / $totalChapters) * 100, 2) : 0;
 
@@ -259,7 +260,7 @@ class ReadingProgressController extends Controller
         ]);
 
         // Calculate total chapters
-        $totalChapters = Chapter::where('novel_id', $novel->id)->count();
+        $totalChapters = $novel->total_chapters ?? 0;
 
         return response()->json([
             'message' => 'Reading progress created successfully',
