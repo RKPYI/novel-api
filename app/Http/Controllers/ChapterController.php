@@ -117,6 +117,9 @@ class ChapterController extends Controller
             ], 404);
         }
 
+        // Increment view count
+        $chapter->increment('views');
+
         // Get previous chapter (chapter with smaller chapter_number)
         $previousChapter = \App\Models\Chapter::where('novel_id', $novel->id)
             ->where('chapter_number', '<', $chapter->chapter_number)
