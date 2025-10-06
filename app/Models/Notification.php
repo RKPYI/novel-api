@@ -86,17 +86,39 @@ class Notification extends Model
      */
     public static function createCommentReplyNotification(int $userId, Comment $reply, Comment $originalComment): self
     {
+        $novel = $reply->novel;
+        $chapter = $reply->chapter;
+
+        // Build more descriptive message
+        $location = "on '{$novel->title}'";
+        if ($chapter) {
+            $location .= " - Chapter {$chapter->chapter_number}: {$chapter->title}";
+        }
+
+        // Preview of original comment (first 50 chars)
+        $commentPreview = mb_strlen($originalComment->content) > 50
+            ? mb_substr($originalComment->content, 0, 50) . '...'
+            : $originalComment->content;
+
+        $message = "{$reply->user->name} replied to your comment {$location}";
+        $message .= "\nYour comment: \"{$commentPreview}\"";
+
         return self::create([
             'user_id' => $userId,
             'type' => self::TYPE_COMMENT_REPLY,
             'title' => 'New Reply to Your Comment',
-            'message' => "{$reply->user->name} replied to your comment",
+            'message' => $message,
             'data' => [
                 'comment_id' => $reply->id,
                 'original_comment_id' => $originalComment->id,
                 'novel_id' => $reply->novel_id,
                 'novel_slug' => $reply->novel->slug ?? null,
+                'novel_title' => $novel->title,
+                'chapter_id' => $reply->chapter_id,
+                'chapter_number' => $chapter?->chapter_number,
+                'chapter_title' => $chapter?->title,
                 'replier_name' => $reply->user->name,
+                'original_comment_preview' => $commentPreview,
             ]
         ]);
     }

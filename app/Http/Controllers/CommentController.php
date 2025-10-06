@@ -144,6 +144,20 @@ class CommentController extends Controller
             'is_spoiler' => $request->boolean('is_spoiler', false),
         ]);
 
+        // Send notification if this is a reply to another user's comment
+        if ($request->parent_id) {
+            $parentComment = Comment::with(['novel', 'chapter'])->find($request->parent_id);
+
+            // Only notify if replying to someone else's comment (not own comment)
+            if ($parentComment && $parentComment->user_id !== $request->user()->id) {
+                \App\Models\Notification::createCommentReplyNotification(
+                    $parentComment->user_id,
+                    $comment,
+                    $parentComment
+                );
+            }
+        }
+
         $comment->load(['user:id,name,avatar,role,email_verified_at', 'replies.user:id,name,avatar,role,email_verified_at']);
 
         return response()->json([
