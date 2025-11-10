@@ -24,7 +24,7 @@ Route::prefix('auth')->group(function () {
 
 // Email verification routes
 Route::prefix('auth')->group(function () {
-    Route::post('email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');
+    Route::get('email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');
 });
 
 // Protected auth routes

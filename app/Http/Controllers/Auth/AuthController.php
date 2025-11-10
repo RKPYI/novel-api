@@ -187,13 +187,13 @@ class AuthController extends Controller
     {
         // Check if this is for Telescope access
         $state = $request->get('telescope') === 'true' ? 'telescope' : null;
-        
+
         $driver = Socialite::driver('google')->stateless();
-        
+
         if ($state) {
             $driver->with(['state' => $state]);
         }
-        
+
         $url = $driver->redirect()->getTargetUrl();
 
         return response()->json([
@@ -369,41 +369,31 @@ class AuthController extends Controller
     /**
      * Verify user email
      */
-    public function verifyEmail(Request $request, $id, $hash): JsonResponse
+    public function verifyEmail(Request $request, $id, $hash)
     {
         $user = User::find($id);
 
+        $frontendUrl = env('FRONTEND_URL', 'http://localhost:3000');
+
         if (!$user) {
-            return response()->json([
-                'message' => 'Invalid verification link'
-            ], 400);
+            // Redirect to frontend with error
+            return redirect($frontendUrl . '/verify-email?status=error&message=Invalid verification link');
         }
 
         if (!hash_equals((string) $hash, sha1($user->email))) {
-            return response()->json([
-                'message' => 'Invalid verification link'
-            ], 400);
+            // Redirect to frontend with error
+            return redirect($frontendUrl . '/verify-email?status=error&message=Invalid verification link');
         }
 
         if ($user->hasVerifiedEmail()) {
-            return response()->json([
-                'message' => 'Email is already verified'
-            ], 400);
+            // Redirect to frontend - already verified
+            return redirect($frontendUrl . '/verify-email?status=already_verified&message=Email is already verified');
         }
 
         $user->markEmailAsVerified();
 
-        return response()->json([
-            'message' => 'Email verified successfully',
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'email_verified_at' => $user->email_verified_at,
-                'email_verified' => $user->hasVerifiedEmail(),
-                'role' => $user->role,
-            ]
-        ]);
+        // Redirect to frontend with success
+        return redirect($frontendUrl . '/verify-email?status=success&message=Email verified successfully');
     }
 
     /**
