@@ -2,27 +2,35 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Chapter;
+use App\Models\Novel;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class ChapterController extends Controller
 {
     /**
      * Display a listing of chapters for a novel.
      */
-    public function index(\App\Models\Novel $novel)
+    public function index(Novel $novel)
     {
-        $chapters = \App\Models\Chapter::where('novel_id', $novel->id)
-            ->select('id', 'title', 'chapter_number', 'word_count')
-            ->orderBy('chapter_number')
-            ->get()
-            ->map(function ($chapter) {
-                return [
-                    'id' => $chapter->id,
-                    'title' => $chapter->title,
-                    'chapter_number' => $chapter->chapter_number,
-                    'word_count' => $chapter->word_count,
-                ];
-            });
+        // Cache chapters list for 30 minutes
+        $cacheKey = "chapters_novel_{$novel->id}";
+
+        $chapters = Cache::tags(["chapters_novel_{$novel->id}"])->remember($cacheKey, now()->addMinutes(30), function () use ($novel) {
+            return Chapter::where('novel_id', $novel->id)
+                ->select('id', 'title', 'chapter_number', 'word_count')
+                ->orderBy('chapter_number')
+                ->get()
+                ->map(function ($chapter) {
+                    return [
+                        'id' => $chapter->id,
+                        'title' => $chapter->title,
+                        'chapter_number' => $chapter->chapter_number,
+                        'word_count' => $chapter->word_count,
+                    ];
+                });
+        });
 
         return response()->json([
             'message' => 'Chapters for novel: ' . $novel->title,
@@ -40,7 +48,7 @@ class ChapterController extends Controller
     /**
      * Store a newly created chapter in storage.
      */
-    public function store(Request $request, \App\Models\Novel $novel)
+    public function store(Request $request, Novel $novel)
     {
         // Check if user can edit this novel (owner or admin)
         $user = $request->user();
@@ -60,7 +68,7 @@ class ChapterController extends Controller
 
         // Auto-generate chapter number if not provided
         if (!$request->chapter_number) {
-            $lastChapter = \App\Models\Chapter::where('novel_id', $novel->id)
+            $lastChapter = Chapter::where('novel_id', $novel->id)
                 ->orderBy('chapter_number', 'desc')
                 ->first();
             $chapterNumber = $lastChapter ? $lastChapter->chapter_number + 1 : 1;
@@ -68,7 +76,7 @@ class ChapterController extends Controller
             $chapterNumber = $request->chapter_number;
 
             // Check if chapter number already exists
-            $existingChapter = \App\Models\Chapter::where('novel_id', $novel->id)
+            $existingChapter = Chapter::where('novel_id', $novel->id)
                 ->where('chapter_number', $chapterNumber)
                 ->first();
 
@@ -83,7 +91,7 @@ class ChapterController extends Controller
         // Calculate word count
         $wordCount = str_word_count(strip_tags($request->content));
 
-        $chapter = \App\Models\Chapter::create([
+        $chapter = Chapter::create([
             'novel_id' => $novel->id,
             'title' => $request->title,
             'content' => $request->content,
@@ -105,37 +113,50 @@ class ChapterController extends Controller
     /**
      * Display the specified chapter by chapter number.
      */
-    public function show(\App\Models\Novel $novel, $chapterNumber)
+    public function show(Novel $novel, $chapterNumber)
     {
-        $chapter = \App\Models\Chapter::where('novel_id', $novel->id)
-            ->where('chapter_number', $chapterNumber)
-            ->first();
+        // Cache chapter content for 1 hour (chapters rarely change after publishing)
+        $cacheKey = "chapter_{$novel->id}_{$chapterNumber}";
 
-        if (!$chapter) {
+        $chapterData = Cache::tags(["chapters_novel_{$novel->id}"])->remember($cacheKey, now()->addHour(), function () use ($novel, $chapterNumber) {
+            $chapter = Chapter::where('novel_id', $novel->id)
+                ->where('chapter_number', $chapterNumber)
+                ->first();
+
+            if (!$chapter) {
+                return null;
+            }
+
+            // Get previous chapter (chapter with smaller chapter_number)
+            $previousChapter = Chapter::where('novel_id', $novel->id)
+                ->where('chapter_number', '<', $chapter->chapter_number)
+                ->orderBy('chapter_number', 'desc')
+                ->first();
+
+            // Get next chapter (chapter with larger chapter_number)
+            $nextChapter = Chapter::where('novel_id', $novel->id)
+                ->where('chapter_number', '>', $chapter->chapter_number)
+                ->orderBy('chapter_number', 'asc')
+                ->first();
+
+            // Add navigation info to chapter data
+            $data = $chapter->toArray();
+            $data['previous_chapter'] = $previousChapter ? $previousChapter->chapter_number : null;
+            $data['next_chapter'] = $nextChapter ? $nextChapter->chapter_number : null;
+
+            return $data;
+        });
+
+        if (!$chapterData) {
             return response()->json([
                 'message' => 'Chapter not found'
             ], 404);
         }
 
-        // Increment view count
-        $chapter->increment('views');
-
-        // Get previous chapter (chapter with smaller chapter_number)
-        $previousChapter = \App\Models\Chapter::where('novel_id', $novel->id)
-            ->where('chapter_number', '<', $chapter->chapter_number)
-            ->orderBy('chapter_number', 'desc')
-            ->first();
-
-        // Get next chapter (chapter with larger chapter_number)
-        $nextChapter = \App\Models\Chapter::where('novel_id', $novel->id)
-            ->where('chapter_number', '>', $chapter->chapter_number)
-            ->orderBy('chapter_number', 'asc')
-            ->first();
-
-        // Add navigation info to chapter data
-        $chapterData = $chapter->toArray();
-        $chapterData['previous_chapter'] = $previousChapter ? $previousChapter->chapter_number : null;
-        $chapterData['next_chapter'] = $nextChapter ? $nextChapter->chapter_number : null;
+        // Increment view count (don't cache this, run every time)
+        Chapter::where('novel_id', $novel->id)
+            ->where('chapter_number', $chapterNumber)
+            ->increment('views');
 
         return response()->json([
             'message' => 'Chapter details',
@@ -152,7 +173,7 @@ class ChapterController extends Controller
     /**
      * Update the specified chapter.
      */
-    public function update(Request $request, \App\Models\Novel $novel, \App\Models\Chapter $chapter)
+    public function update(Request $request, Novel $novel, Chapter $chapter)
     {
         // Check if chapter belongs to novel
         if ($chapter->novel_id !== $novel->id) {
@@ -179,7 +200,7 @@ class ChapterController extends Controller
 
         // Check if new chapter number conflicts with existing chapters
         if ($request->has('chapter_number') && $request->chapter_number !== $chapter->chapter_number) {
-            $existingChapter = \App\Models\Chapter::where('novel_id', $novel->id)
+            $existingChapter = Chapter::where('novel_id', $novel->id)
                 ->where('chapter_number', $request->chapter_number)
                 ->where('id', '!=', $chapter->id)
                 ->first();
@@ -210,7 +231,7 @@ class ChapterController extends Controller
     /**
      * Remove the specified chapter.
      */
-    public function destroy(Request $request, \App\Models\Novel $novel, \App\Models\Chapter $chapter)
+    public function destroy(Request $request, Novel $novel, Chapter $chapter)
     {
         // Check if chapter belongs to novel
         if ($chapter->novel_id !== $novel->id) {
@@ -240,7 +261,7 @@ class ChapterController extends Controller
     /**
      * Send notifications to users about new chapter
      */
-    private function notifyUsersAboutNewChapter(\App\Models\Novel $novel, \App\Models\Chapter $chapter)
+    private function notifyUsersAboutNewChapter(Novel $novel, Chapter $chapter)
     {
         // Get all users who have this novel in their library with status 'reading'
         $userIds = \App\Models\UserLibrary::where('novel_id', $novel->id)

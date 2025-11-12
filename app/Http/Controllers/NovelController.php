@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use App\Models\Novel;
 use App\Models\Genre;
 use App\Models\ReadingProgress;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class NovelController extends Controller
 {
@@ -14,42 +16,48 @@ class NovelController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Novel::with(['genres']);
+        // Unique cache key for this exact request (filters + pagination)
+        $cacheKey = 'novels_index_' . md5($request->fullUrl());
 
-        // Filter by genre
-        if ($request->has('genre')) {
-            $query->whereHas('genres', function ($q) use ($request) {
-                $q->where('slug', $request->genre);
-            });
-        }
+        $novels = Cache::tags(['novels-index'])->remember($cacheKey, now()->addMinutes(10), function () use ($request) {
+            Log::info('CACHE MISS - Running query for: ' . $request->fullUrl());
+            $query = Novel::with(['genres']);
 
-        // Filter by status
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
+            // Filter by genre
+            if ($request->has('genre')) {
+                $query->whereHas('genres', function ($q) use ($request) {
+                    $q->where('slug', $request->genre);
+                });
+            }
 
-        // Sort by various criteria
-        $sortBy = $request->get('sort_by', 'updated_at');
-        $sortOrder = $request->get('sort_order', 'desc');
+            // Filter by status
+            if ($request->has('status')) {
+                $query->where('status', $request->status);
+            }
 
-        switch ($sortBy) {
-            case 'popular':
-                $query->orderBy('views', 'desc');
-                break;
-            case 'rating':
-                $query->orderBy('rating', 'desc');
-                break;
-            case 'latest':
-                $query->orderBy('created_at', 'desc');
-                break;
-            case 'updated':
-                $query->orderBy('updated_at', 'desc');
-                break;
-            default:
-                $query->orderBy($sortBy, $sortOrder);
-        }
+            // Sort by various criteria
+            $sortBy = $request->get('sort_by', 'updated_at');
+            $sortOrder = $request->get('sort_order', 'desc');
 
-        $novels = $query->paginate(12);
+            switch ($sortBy) {
+                case 'popular':
+                    $query->orderBy('views', 'desc');
+                    break;
+                case 'rating':
+                    $query->orderBy('rating', 'desc');
+                    break;
+                case 'latest':
+                    $query->orderBy('created_at', 'desc');
+                    break;
+                case 'updated':
+                    $query->orderBy('updated_at', 'desc');
+                    break;
+                default:
+                    $query->orderBy($sortBy, $sortOrder);
+            }
+
+            return $query->paginate(12);
+        });
 
         return response()->json([
             'message' => 'List of novels',
@@ -97,9 +105,14 @@ class NovelController extends Controller
      */
     public function show(string $slug)
     {
-        $novel = Novel::with(['genres', 'chapters' => function($query) {
-            $query->select('id', 'novel_id', 'chapter_number', 'title', 'word_count')->orderBy('chapter_number');
-        }])->where('slug', $slug)->first();
+        // Cache novel details for 30 minutes
+        $cacheKey = "novel_show_{$slug}";
+
+        $novel = Cache::tags(['novels', "novel_{$slug}"])->remember($cacheKey, now()->addMinutes(30), function () use ($slug) {
+            return Novel::with(['genres', 'chapters' => function($query) {
+                $query->select('id', 'novel_id', 'chapter_number', 'title', 'word_count')->orderBy('chapter_number');
+            }])->where('slug', $slug)->first();
+        });
 
         if (!$novel) {
             return response()->json([
@@ -107,8 +120,8 @@ class NovelController extends Controller
             ], 404);
         }
 
-        // Increment view count
-        $novel->increment('views');
+        // Increment view count (don't cache this, run every time)
+        Novel::where('slug', $slug)->increment('views');
 
         return response()->json([
             'message' => 'Novel details',
@@ -206,12 +219,17 @@ class NovelController extends Controller
             ], 400);
         }
 
-        $novels = Novel::with('genres')
-            ->where('title', 'LIKE', '%' . $query . '%')
-            ->orWhere('author', 'LIKE', '%' . $query . '%')
-            ->orWhere('description', 'LIKE', '%' . $query . '%')
-            ->limit(10)
-            ->get();
+        // Cache search results for 15 minutes
+        $cacheKey = 'novel_search_' . md5(strtolower($query));
+
+        $novels = Cache::tags(['novels', 'novels-search'])->remember($cacheKey, now()->addMinutes(15), function () use ($query) {
+            return Novel::with('genres')
+                ->where('title', 'LIKE', '%' . $query . '%')
+                ->orWhere('author', 'LIKE', '%' . $query . '%')
+                ->orWhere('description', 'LIKE', '%' . $query . '%')
+                ->limit(10)
+                ->get();
+        });
 
         return response()->json([
             'message' => 'Search results for: ' . $query,
@@ -224,10 +242,13 @@ class NovelController extends Controller
      */
     public function popular()
     {
-        $novels = Novel::with('genres')
-            ->orderBy('views', 'desc')
-            ->limit(12)
-            ->get();
+        // Cache popular novels for 5 minutes (changes frequently due to views)
+        $novels = Cache::tags(['novels', 'novels-popular'])->remember('novels_popular', now()->addMinutes(5), function () {
+            return Novel::with('genres')
+                ->orderBy('views', 'desc')
+                ->limit(12)
+                ->get();
+        });
 
         return response()->json([
             'message' => 'Popular novels',
@@ -240,10 +261,13 @@ class NovelController extends Controller
      */
     public function latest()
     {
-        $novels = Novel::with('genres')
-            ->orderBy('updated_at', 'desc')
-            ->limit(12)
-            ->get();
+        // Cache latest novels for 10 minutes
+        $novels = Cache::tags(['novels', 'novels-latest'])->remember('novels_latest', now()->addMinutes(10), function () {
+            return Novel::with('genres')
+                ->orderBy('created_at', 'desc')
+                ->limit(12)
+                ->get();
+        });
 
         return response()->json([
             'message' => 'Latest novels',
@@ -256,10 +280,13 @@ class NovelController extends Controller
      */
     public function recentlyUpdated()
     {
-        $novels = Novel::with('genres')
-            ->orderBy('updated_at', 'desc')
-            ->limit(12)
-            ->get();
+        // Cache recently updated for 10 minutes
+        $novels = Cache::tags(['novels', 'novels-updated'])->remember('novels_recently_updated', now()->addMinutes(10), function () {
+            return Novel::with('genres')
+                ->orderBy('updated_at', 'desc')
+                ->limit(12)
+                ->get();
+        });
 
         return response()->json([
             'message' => 'Recently updated novels',
@@ -272,7 +299,10 @@ class NovelController extends Controller
      */
     public function genres()
     {
-        $genres = Genre::orderBy('name')->get();
+        // Cache genres for 1 hour (rarely changes)
+        $genres = Cache::remember('genres_all', now()->addHour(), function () {
+            return Genre::orderBy('name')->get();
+        });
 
         return response()->json([
             'message' => 'Available genres',
@@ -285,12 +315,14 @@ class NovelController extends Controller
      */
     public function recommendations(Request $request)
     {
-        // Simple recommendation based on reading history and popular novels
-        $novels = Novel::with('genres')
-            ->orderBy('rating', 'desc')
-            ->orderBy('views', 'desc')
-            ->limit(12)
-            ->get();
+        // Cache recommendations for 20 minutes
+        $novels = Cache::tags(['novels', 'novels-recommendations'])->remember('novels_recommendations', now()->addMinutes(20), function () {
+            return Novel::with('genres')
+                ->orderBy('rating', 'desc')
+                ->orderBy('views', 'desc')
+                ->limit(12)
+                ->get();
+        });
 
         return response()->json([
             'message' => 'Recommended novels',

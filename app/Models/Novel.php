@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 class Novel extends Model
 {
@@ -144,6 +145,21 @@ class Novel extends Model
             if ($novel->isDirty('title') && empty($novel->slug)) {
                 $novel->slug = $novel->generateSlug();
             }
+        });
+
+        // Smart cache invalidation on save
+        static::saved(function ($novel) {
+            // Clear index, search, and aggregated lists
+            Cache::tags(['novels-index', 'novels-search', 'novels-latest', 'novels-updated', 'novels-popular', 'novels-recommendations'])->flush();
+
+            // Clear specific novel cache
+            Cache::tags(["novel_{$novel->slug}"])->flush();
+        });
+
+        // Clear caches on delete
+        static::deleted(function ($novel) {
+            Cache::tags(['novels-index', 'novels-search', 'novels-latest', 'novels-updated', 'novels-popular', 'novels-recommendations'])->flush();
+            Cache::tags(["novel_{$novel->slug}"])->flush();
         });
     }
 

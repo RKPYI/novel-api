@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 class Chapter extends Model
 {
@@ -74,6 +75,25 @@ class Chapter extends Model
             if ($chapter->novel) {
                 $chapter->novel->decrement('total_chapters');
                 $chapter->novel->touch(); // Update updated_at timestamp
+            }
+        });
+
+        // Clear chapter caches on save/delete
+        static::saved(function ($chapter) {
+            if ($chapter->novel) {
+                Cache::tags([
+                    "novel_{$chapter->novel->slug}",
+                    "chapters_novel_{$chapter->novel->id}"
+                ])->flush();
+            }
+        });
+
+        static::deleted(function ($chapter) {
+            if ($chapter->novel) {
+                Cache::tags([
+                    "novel_{$chapter->novel->slug}",
+                    "chapters_novel_{$chapter->novel->id}"
+                ])->flush();
             }
         });
     }
