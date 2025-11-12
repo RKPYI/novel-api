@@ -11,6 +11,7 @@
         "laravel/octane": "^2.13",
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.21",
+        "laravel/telescope": "^5.15",
         "laravel/tinker": "^2.10.1",
         "spiral/roadrunner-cli": "^2.6.0",
         "spiral/roadrunner-http": "^3.3.0"
@@ -20,7 +21,6 @@
         "laravel/pail": "^1.2.2",
         "laravel/pint": "^1.13",
         "laravel/sail": "^1.41",
-        "laravel/telescope": "^5.13",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.6",
         "phpunit/phpunit": "^11.5.3"
