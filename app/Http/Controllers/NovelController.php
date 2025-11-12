@@ -105,14 +105,11 @@ class NovelController extends Controller
      */
     public function show(string $slug)
     {
-        // Cache novel details for 30 minutes
-        $cacheKey = "novel_show_{$slug}";
-
-        $novel = Cache::tags(['novels', "novel_{$slug}"])->remember($cacheKey, now()->addMinutes(30), function () use ($slug) {
-            return Novel::with(['genres', 'chapters' => function($query) {
-                $query->select('id', 'novel_id', 'chapter_number', 'title', 'word_count')->orderBy('chapter_number');
-            }])->where('slug', $slug)->first();
-        });
+        // Don't cache the show endpoint since views are incremented on every request
+        // and need to be real-time for low-traffic novels
+        $novel = Novel::with(['genres', 'chapters' => function($query) {
+            $query->select('id', 'novel_id', 'chapter_number', 'title', 'word_count')->orderBy('chapter_number');
+        }])->where('slug', $slug)->first();
 
         if (!$novel) {
             return response()->json([
@@ -120,8 +117,9 @@ class NovelController extends Controller
             ], 404);
         }
 
-        // Increment view count (don't cache this, run every time)
-        Novel::where('slug', $slug)->increment('views');
+        // Increment view count and refresh the model to get updated views
+        $novel->views = $novel->views + 1;
+        $novel->save();
 
         return response()->json([
             'message' => 'Novel details',

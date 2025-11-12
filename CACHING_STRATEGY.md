@@ -28,7 +28,7 @@ Different endpoints have different cache durations based on how often data chang
 | Genres list | 1 hour | Rarely changes |
 | Chapter content | 1 hour | Rarely edited after publish |
 | Chapter list | 30 minutes | Changes when new chapters added |
-| Novel details | 30 minutes | Moderate changes |
+| Novel details | **NOT CACHED** | Views increment on every request, need real-time data |
 | Recommendations | 20 minutes | Based on ratings/views |
 | Search results | 15 minutes | Frequently searched |
 | Index/listing | 10 minutes | Filters/sorts vary |
@@ -51,13 +51,24 @@ Different endpoints have different cache durations based on how often data chang
 
 ### 4. View Counting Strategy
 
-View counts are NOT cached - they update on every request:
+**Novel details (`show` endpoint) is NOT cached** because:
+- Views increment on every request
+- For low-traffic sites (< 100 views per novel), every view count matters
+- Real-time view counts are more important than caching in this case
+
 ```php
-// Increment view count (outside cache)
-Novel::where('slug', $slug)->increment('views');
+// Novel details fetched fresh every time
+$novel = Novel::with(['genres', 'chapters'])->where('slug', $slug)->first();
+
+// Increment view count
+$novel->views = $novel->views + 1;
+$novel->save();
 ```
 
-This ensures accurate tracking while still caching the expensive queries.
+**When to cache the show endpoint:**
+- When traffic is high (> 1000 views/day per novel)
+- When view counts become less significant
+- Consider batch updates (increment every 10 views) with Redis counters
 
 ## Performance Impact
 

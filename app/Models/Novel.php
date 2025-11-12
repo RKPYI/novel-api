@@ -150,16 +150,13 @@ class Novel extends Model
         // Smart cache invalidation on save
         static::saved(function ($novel) {
             // Clear index, search, and aggregated lists
+            // Note: novel_show is NOT cached (real-time views), so no need to clear it
             Cache::tags(['novels-index', 'novels-search', 'novels-latest', 'novels-updated', 'novels-popular', 'novels-recommendations'])->flush();
-
-            // Clear specific novel cache
-            Cache::tags(["novel_{$novel->slug}"])->flush();
         });
 
         // Clear caches on delete
         static::deleted(function ($novel) {
             Cache::tags(['novels-index', 'novels-search', 'novels-latest', 'novels-updated', 'novels-popular', 'novels-recommendations'])->flush();
-            Cache::tags(["novel_{$novel->slug}"])->flush();
         });
     }
 

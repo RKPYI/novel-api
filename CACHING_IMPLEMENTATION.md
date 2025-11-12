@@ -10,7 +10,7 @@ A simple but highly effective caching strategy for Novel APIs that provides **50
 
 1. **Novel Endpoints** (NovelController)
    - `GET /api/novels` - Index with filters (10 min)
-   - `GET /api/novels/{slug}` - Novel details (30 min)
+   - `GET /api/novels/{slug}` - Novel details (**NOT CACHED** - real-time views)
    - `GET /api/novels/search` - Search results (15 min)
    - `GET /api/novels/popular` - Popular novels (5 min)
    - `GET /api/novels/latest` - Latest novels (10 min)
@@ -28,10 +28,11 @@ A simple but highly effective caching strategy for Novel APIs that provides **50
 - **Granular**: Only affected caches are cleared (not everything)
 - **Tag-based**: Related caches grouped with tags for efficient management
 
-### ✅ View Counting
+### ✅ Real-time View Counting
 
-- View counters still work (incremented on every request)
-- Doesn't interfere with cached responses
+- Novel detail page is **NOT cached** to show real-time view counts
+- Important for low-traffic sites where every view matters
+- View count increments and displays immediately
 
 ## Performance Impact
 
