@@ -260,7 +260,7 @@ class AuthController extends Controller
             }
 
             // Regular frontend redirect
-            $frontendUrl = env('FRONTEND_URL', 'https://novel.randk.tech');
+            $frontendUrl = env('FRONTEND_URL', 'https://rantale.randk.me');
             $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
                 'success' => 'true',
                 'token' => $token,
@@ -290,7 +290,7 @@ class AuthController extends Controller
                 return redirect('/telescope/login?error=authentication_failed');
             }
 
-            $frontendUrl = env('FRONTEND_URL', 'https://novel.randk.tech');
+            $frontendUrl = env('FRONTEND_URL', 'https://rantale.randk.me');
             $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
                 'error' => 'authentication_failed',
                 'message' => 'Google authentication failed'
