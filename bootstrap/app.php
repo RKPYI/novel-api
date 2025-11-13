@@ -17,6 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'author' => \App\Http\Middleware\AuthorMiddleware::class,
             'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
         ]);
+        
+        // Enable CORS for API routes
+        $middleware->api(prepend: [
+            \Illuminate\Http\Middleware\HandleCors::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
