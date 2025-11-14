@@ -41,16 +41,16 @@ class NovelController extends Controller
 
             switch ($sortBy) {
                 case 'popular':
-                    $query->orderBy('views', 'desc');
+                    $query->orderBy('views', $sortOrder);
                     break;
                 case 'rating':
-                    $query->orderBy('rating', 'desc');
+                    $query->orderBy('rating', $sortOrder);
                     break;
                 case 'latest':
-                    $query->orderBy('created_at', 'desc');
+                    $query->orderBy('created_at', $sortOrder);
                     break;
                 case 'updated':
-                    $query->orderBy('updated_at', 'desc');
+                    $query->orderBy('updated_at', $sortOrder);
                     break;
                 default:
                     $query->orderBy($sortBy, $sortOrder);
