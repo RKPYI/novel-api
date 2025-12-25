@@ -34,18 +34,15 @@ class CommentController extends Controller
 
         // Get paginated top-level comments
         $topLevelCommentsQuery = (clone $baseQuery)
-            ->with(['user:id,name,avatar,role,email_verified_at', 'replies.user:id,name,avatar,role,email_verified_at', 'replies.replies'])
+            ->with([
+                'user:id,name,avatar,role,email_verified_at',
+                'replies.user:id,name,avatar,role,email_verified_at',
+                'replies.replies.user:id,name,avatar,role,email_verified_at'
+            ])
             ->whereNull('parent_id')
             ->orderBy('created_at', 'desc');
 
         $comments = $topLevelCommentsQuery->paginate(20);
-
-        // To ensure replies also have their user data and potentially nested replies loaded
-        // This can be resource-intensive if replies are very deep.
-        // Consider if 'replies.user:id,name,avatar' is sufficient or if deeper nesting is needed.
-        // The current 'replies.user:id,name,avatar' loads user for direct replies.
-        // If you need user for replies of replies, you'd do 'replies.replies.user:id,name,avatar', etc.
-        // For now, assuming 'replies.user:id,name,avatar' is what's primarily used by frontend for replies.
 
         return response()->json([
             'comments' => $comments,
