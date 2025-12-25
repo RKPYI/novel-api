@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use App\Helpers\CacheHelper;
 
 class Novel extends Model
 {
@@ -149,14 +151,16 @@ class Novel extends Model
 
         // Smart cache invalidation on save
         static::saved(function ($novel) {
-            // Clear index, search, and aggregated lists
-            // Note: novel_show is NOT cached (real-time views), so no need to clear it
-            Cache::tags(['novels-index', 'novels-search', 'novels-latest', 'novels-updated', 'novels-popular', 'novels-recommendations'])->flush();
+            // Only clear cache if significant fields were changed (not just view count)
+            // This prevents cache clearing on every novel view
+            if ($novel->wasChanged() && !$novel->wasChanged(['views'])) {
+                CacheHelper::clearNovelCaches($novel->id, $novel->slug);
+            }
         });
 
         // Clear caches on delete
         static::deleted(function ($novel) {
-            Cache::tags(['novels-index', 'novels-search', 'novels-latest', 'novels-updated', 'novels-popular', 'novels-recommendations'])->flush();
+            CacheHelper::clearNovelCaches($novel->id, $novel->slug);
         });
     }
 

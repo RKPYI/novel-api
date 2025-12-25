@@ -6,6 +6,7 @@ use App\Models\Chapter;
 use App\Models\Novel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use App\Helpers\CacheHelper;
 
 class ChapterController extends Controller
 {
@@ -17,7 +18,7 @@ class ChapterController extends Controller
         // Cache chapters list for 30 minutes
         $cacheKey = "chapters_novel_{$novel->id}";
 
-        $chapters = Cache::tags(["chapters_novel_{$novel->id}"])->remember($cacheKey, now()->addMinutes(30), function () use ($novel) {
+        $chapters = Cache::remember($cacheKey, now()->addMinutes(30), function () use ($novel) {
             return Chapter::where('novel_id', $novel->id)
                 ->select('id', 'title', 'chapter_number', 'word_count')
                 ->orderBy('chapter_number')
@@ -101,6 +102,9 @@ class ChapterController extends Controller
             'published_at' => $request->published_at ? now() : null,
         ]);
 
+        // Clear cache for this novel's chapters
+        Cache::forget("chapters_novel_{$novel->id}");
+
         // Send notifications to users who have this novel in their library
         $this->notifyUsersAboutNewChapter($novel, $chapter);
 
@@ -118,7 +122,7 @@ class ChapterController extends Controller
         // Cache chapter content for 1 hour (chapters rarely change after publishing)
         $cacheKey = "chapter_{$novel->id}_{$chapterNumber}";
 
-        $chapterData = Cache::tags(["chapters_novel_{$novel->id}"])->remember($cacheKey, now()->addHour(), function () use ($novel, $chapterNumber) {
+        $chapterData = Cache::remember($cacheKey, now()->addHour(), function () use ($novel, $chapterNumber) {
             $chapter = Chapter::where('novel_id', $novel->id)
                 ->where('chapter_number', $chapterNumber)
                 ->first();
@@ -220,7 +224,19 @@ class ChapterController extends Controller
             $updateData['word_count'] = str_word_count(strip_tags($request->content));
         }
 
+        $oldChapterNumber = $chapter->chapter_number;
         $chapter->update($updateData);
+
+        // Clear cache for this novel's chapters list
+        Cache::forget("chapters_novel_{$novel->id}");
+
+        // Clear cache for the old chapter detail
+        Cache::forget("chapter_{$novel->id}_{$oldChapterNumber}");
+
+        // If chapter number changed, also clear the new chapter number cache
+        if ($request->has('chapter_number') && $request->chapter_number != $oldChapterNumber) {
+            Cache::forget("chapter_{$novel->id}_{$request->chapter_number}");
+        }
 
         return response()->json([
             'message' => 'Chapter updated successfully',
@@ -253,8 +269,62 @@ class ChapterController extends Controller
 
         $chapter->delete();
 
+        // Clear cache for this novel's chapters list
+        Cache::forget("chapters_novel_{$novel->id}");
+
+        // Clear cache for this specific chapter detail
+        Cache::forget("chapter_{$novel->id}_{$chapterNumber}");
+
         return response()->json([
             'message' => "Chapter '{$chapterTitle}' (#{$chapterNumber}) deleted successfully"
+        ]);
+    }
+
+    /**
+     * Bulk delete chapters
+     */
+    public function bulkDestroy(Request $request, Novel $novel)
+    {
+        // Check if user can edit this novel (owner or admin)
+        $user = $request->user();
+        if ($novel->user_id !== $user->id && !$user->isAdmin()) {
+            return response()->json([
+                'message' => 'You can only delete chapters from your own novels'
+            ], 403);
+        }
+
+        $request->validate([
+            'chapter_ids' => 'required|array|min:1',
+            'chapter_ids.*' => 'required|integer|exists:chapters,id'
+        ]);
+
+        $chapterIds = $request->chapter_ids;
+
+        // Verify all chapters belong to the specified novel
+        $chaptersToDelete = Chapter::whereIn('id', $chapterIds)
+            ->where('novel_id', $novel->id)
+            ->get();
+
+        if ($chaptersToDelete->count() !== count($chapterIds)) {
+            return response()->json([
+                'message' => 'One or more chapters do not belong to this novel or do not exist'
+            ], 400);
+        }
+
+        // Delete the chapters
+        $deletedCount = Chapter::whereIn('id', $chapterIds)
+            ->where('novel_id', $novel->id)
+            ->delete();
+
+        // Clear cache for this novel's chapters
+        Cache::forget("chapters_novel_{$novel->id}");
+
+        // Note: total_chapters is automatically updated by the Chapter model's deleted event
+        // No need to manually update it here
+
+        return response()->json([
+            'message' => "Successfully deleted {$deletedCount} chapter(s)",
+            'deleted_count' => $deletedCount
         ]);
     }
 

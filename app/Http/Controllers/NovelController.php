@@ -8,6 +8,7 @@ use App\Models\Genre;
 use App\Models\ReadingProgress;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use App\Helpers\CacheHelper;
 
 class NovelController extends Controller
 {
@@ -19,7 +20,7 @@ class NovelController extends Controller
         // Unique cache key for this exact request (filters + pagination)
         $cacheKey = 'novels_index_' . md5($request->fullUrl());
 
-        $novels = Cache::tags(['novels-index'])->remember($cacheKey, now()->addMinutes(10), function () use ($request) {
+        $novels = CacheHelper::remember($cacheKey, now()->addMinutes(10), function () use ($request) {
             Log::info('CACHE MISS - Running query for: ' . $request->fullUrl());
             $query = Novel::with(['genres']);
 
@@ -220,14 +221,14 @@ class NovelController extends Controller
         // Cache search results for 15 minutes
         $cacheKey = 'novel_search_' . md5(strtolower($query));
 
-        $novels = Cache::tags(['novels', 'novels-search'])->remember($cacheKey, now()->addMinutes(15), function () use ($query) {
+        $novels = CacheHelper::remember($cacheKey, now()->addMinutes(15), function () use ($query) {
             return Novel::with('genres')
                 ->where('title', 'LIKE', '%' . $query . '%')
                 ->orWhere('author', 'LIKE', '%' . $query . '%')
                 ->orWhere('description', 'LIKE', '%' . $query . '%')
                 ->limit(10)
                 ->get();
-        });
+        }, ['novels', 'novels-search']);
 
         return response()->json([
             'message' => 'Search results for: ' . $query,
@@ -241,12 +242,12 @@ class NovelController extends Controller
     public function popular()
     {
         // Cache popular novels for 5 minutes (changes frequently due to views)
-        $novels = Cache::tags(['novels', 'novels-popular'])->remember('novels_popular', now()->addMinutes(5), function () {
+        $novels = CacheHelper::remember('novels_popular', now()->addMinutes(5), function () {
             return Novel::with('genres')
                 ->orderBy('views', 'desc')
                 ->limit(12)
                 ->get();
-        });
+        }, ['novels', 'novels-popular']);
 
         return response()->json([
             'message' => 'Popular novels',
@@ -260,12 +261,12 @@ class NovelController extends Controller
     public function latest()
     {
         // Cache latest novels for 10 minutes
-        $novels = Cache::tags(['novels', 'novels-latest'])->remember('novels_latest', now()->addMinutes(10), function () {
+        $novels = CacheHelper::remember('novels_latest', now()->addMinutes(10), function () {
             return Novel::with('genres')
                 ->orderBy('created_at', 'desc')
                 ->limit(12)
                 ->get();
-        });
+        }, ['novels', 'novels-latest']);
 
         return response()->json([
             'message' => 'Latest novels',
@@ -279,12 +280,12 @@ class NovelController extends Controller
     public function recentlyUpdated()
     {
         // Cache recently updated for 10 minutes
-        $novels = Cache::tags(['novels', 'novels-updated'])->remember('novels_recently_updated', now()->addMinutes(10), function () {
+        $novels = CacheHelper::remember('novels_recently_updated', now()->addMinutes(10), function () {
             return Novel::with('genres')
                 ->orderBy('updated_at', 'desc')
                 ->limit(12)
                 ->get();
-        });
+        }, ['novels', 'novels-updated']);
 
         return response()->json([
             'message' => 'Recently updated novels',
@@ -314,17 +315,83 @@ class NovelController extends Controller
     public function recommendations(Request $request)
     {
         // Cache recommendations for 20 minutes
-        $novels = Cache::tags(['novels', 'novels-recommendations'])->remember('novels_recommendations', now()->addMinutes(20), function () {
+        $novels = CacheHelper::remember('novels_recommendations', now()->addMinutes(20), function () {
             return Novel::with('genres')
                 ->orderBy('rating', 'desc')
                 ->orderBy('views', 'desc')
                 ->limit(12)
                 ->get();
-        });
+        }, ['novels', 'novels-recommendations']);
 
         return response()->json([
             'message' => 'Recommended novels',
             'novels' => $novels
         ]);
     }
+
+    /**
+     * Bulk delete novels
+     */
+    public function bulkDestroy(Request $request)
+    {
+        $user = $request->user();
+
+        $request->validate([
+            'novel_ids' => 'required|array|min:1',
+            'novel_ids.*' => 'required|integer|exists:novels,id'
+        ]);
+
+        $novelIds = $request->novel_ids;
+
+        // Get the novels to delete
+        $novelsToDelete = Novel::whereIn('id', $novelIds)->get();
+
+        // Check authorization for each novel
+        $unauthorizedNovels = [];
+        $authorizedNovelIds = [];
+
+        foreach ($novelsToDelete as $novel) {
+            // Only owner or admin can delete
+            if ($novel->user_id === $user->id || $user->isAdmin()) {
+                $authorizedNovelIds[] = $novel->id;
+            } else {
+                $unauthorizedNovels[] = [
+                    'id' => $novel->id,
+                    'title' => $novel->title
+                ];
+            }
+        }
+
+        // If user is not authorized for any of the novels, return error
+        if (!empty($unauthorizedNovels) && empty($authorizedNovelIds)) {
+            return response()->json([
+                'message' => 'You can only delete your own novels',
+                'unauthorized_novels' => $unauthorizedNovels
+            ], 403);
+        }
+
+        // Delete authorized novels
+        $deletedCount = 0;
+        if (!empty($authorizedNovelIds)) {
+            $deletedCount = Novel::whereIn('id', $authorizedNovelIds)->delete();
+            
+            // Clear related caches using CacheHelper
+            CacheHelper::clearNovelCaches();
+        }
+
+        // Prepare response
+        $response = [
+            'message' => "Successfully deleted {$deletedCount} novel(s)",
+            'deleted_count' => $deletedCount
+        ];
+
+        if (!empty($unauthorizedNovels)) {
+            $response['message'] .= ', but ' . count($unauthorizedNovels) . ' novel(s) were skipped due to lack of permissions';
+            $response['unauthorized_novels'] = $unauthorizedNovels;
+            $response['unauthorized_count'] = count($unauthorizedNovels);
+        }
+
+        return response()->json($response, !empty($unauthorizedNovels) ? 207 : 200);
+    }
 }
+

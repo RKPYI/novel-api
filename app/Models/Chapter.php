@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use App\Helpers\CacheHelper;
 
 class Chapter extends Model
 {
@@ -78,22 +79,24 @@ class Chapter extends Model
             }
         });
 
-        // Clear chapter caches on save/delete
+        // Clear chapter caches on save/delete (using key-based caching for compatibility)
         static::saved(function ($chapter) {
             if ($chapter->novel) {
-                Cache::tags([
-                    "novel_{$chapter->novel->slug}",
-                    "chapters_novel_{$chapter->novel->id}"
-                ])->flush();
+                CacheHelper::clearChapterCaches(
+                    $chapter->novel->id,
+                    $chapter->chapter_number,
+                    $chapter->novel->slug
+                );
             }
         });
 
         static::deleted(function ($chapter) {
             if ($chapter->novel) {
-                Cache::tags([
-                    "novel_{$chapter->novel->slug}",
-                    "chapters_novel_{$chapter->novel->id}"
-                ])->flush();
+                CacheHelper::clearChapterCaches(
+                    $chapter->novel->id,
+                    $chapter->chapter_number,
+                    $chapter->novel->slug
+                );
             }
         });
     }

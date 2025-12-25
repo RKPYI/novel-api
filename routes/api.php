@@ -91,6 +91,7 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
     Route::post('novels', [NovelController::class, 'store']);
     Route::put('novels/{slug}', [NovelController::class, 'update']);
     Route::delete('novels/{slug}', [NovelController::class, 'destroy']);
+    Route::post('novels/bulk-delete', [NovelController::class, 'bulkDestroy']);
 });
 
 // Chapter routes - read operations
@@ -102,6 +103,7 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
     Route::post('novels/{novel:slug}/chapters', [ChapterController::class, 'store']);
     Route::put('novels/{novel:slug}/chapters/{chapter}', [ChapterController::class, 'update']);
     Route::delete('novels/{novel:slug}/chapters/{chapter}', [ChapterController::class, 'destroy']);
+    Route::post('novels/{novel:slug}/chapters/bulk-delete', [ChapterController::class, 'bulkDestroy']);
 });
 
 // Comment routes - read operations
