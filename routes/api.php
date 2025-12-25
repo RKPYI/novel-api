@@ -84,6 +84,7 @@ Route::get('novels/latest', [NovelController::class, 'latest']);
 Route::get('novels/recommendations', [NovelController::class, 'recommendations']);
 Route::get('novels/genres', [NovelController::class, 'genres']);
 Route::get('novels', [NovelController::class, 'index']);
+Route::get('novels/{slug}/related', [NovelController::class, 'related']);
 Route::get('novels/{slug}', [NovelController::class, 'show']);
 
 // Author+ novel routes (author, moderator, admin can create/edit)

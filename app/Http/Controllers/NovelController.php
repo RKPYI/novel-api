@@ -393,5 +393,105 @@ class NovelController extends Controller
 
         return response()->json($response, !empty($unauthorizedNovels) ? 207 : 200);
     }
+
+    /**
+     * Get related novels based on multiple factors
+     * Algorithm: Hybrid approach combining genre similarity, rating range, and author
+     */
+    public function related($slug)
+    {
+        $cacheKey = "novel_related_{$slug}";
+
+        $data = CacheHelper::remember($cacheKey, now()->addMinutes(30), function () use ($slug) {
+            Log::info("CACHE MISS - Finding related novels for: {$slug}");
+
+            // Get the current novel with its genres
+            $novel = Novel::where('slug', $slug)
+                ->with('genres')
+                ->firstOrFail();
+
+            $genreIds = $novel->genres->pluck('id')->toArray();
+
+            if (empty($genreIds)) {
+                // If novel has no genres, return popular novels instead
+                $relatedNovels = Novel::with(['genres', 'user'])
+                    ->where('id', '!=', $novel->id)
+                    ->orderBy('views', 'desc')
+                    ->limit(6)
+                    ->get();
+
+                return [
+                    'novel' => $novel,
+                    'related_novels' => $relatedNovels,
+                    'algorithm' => 'popular_fallback'
+                ];
+            }
+
+            // Find novels with matching genres
+            $relatedNovels = Novel::with(['genres', 'user'])
+                ->where('id', '!=', $novel->id)
+                ->whereHas('genres', function ($query) use ($genreIds) {
+                    $query->whereIn('genres.id', $genreIds);
+                })
+                ->get();
+
+            // Calculate similarity scores for each novel
+            $scoredNovels = $relatedNovels->map(function ($relatedNovel) use ($novel, $genreIds) {
+                $score = 0;
+
+                // 1. Genre matching (most important - 50 points max)
+                $matchingGenres = $relatedNovel->genres->pluck('id')->intersect($genreIds)->count();
+                $totalGenres = max(count($genreIds), 1);
+                $genreScore = ($matchingGenres / $totalGenres) * 50;
+                $score += $genreScore;
+
+                // 2. Same author bonus (20 points)
+                if ($relatedNovel->author === $novel->author) {
+                    $score += 20;
+                }
+
+                // 3. Similar rating (15 points max)
+                $ratingDifference = abs($relatedNovel->rating - $novel->rating);
+                $ratingScore = max(0, 15 - ($ratingDifference * 3));
+                $score += $ratingScore;
+
+                // 4. Similar popularity tier (10 points max)
+                $viewsDifference = abs(log($relatedNovel->views + 1) - log($novel->views + 1));
+                $popularityScore = max(0, 10 - $viewsDifference);
+                $score += $popularityScore;
+
+                // 5. Same status bonus (5 points)
+                if ($relatedNovel->status === $novel->status) {
+                    $score += 5;
+                }
+
+                $relatedNovel->similarity_score = round($score, 2);
+                return $relatedNovel;
+            });
+
+            // Sort by similarity score and take top 6
+            $topRelated = $scoredNovels
+                ->sortByDesc('similarity_score')
+                ->take(6)
+                ->values();
+
+            return [
+                'novel' => $novel,
+                'related_novels' => $topRelated,
+                'algorithm' => 'hybrid_similarity'
+            ];
+        });
+
+        return response()->json([
+            'message' => 'Related novels retrieved successfully',
+            'data' => $data['related_novels'],
+            'current_novel' => [
+                'id' => $data['novel']->id,
+                'title' => $data['novel']->title,
+                'slug' => $data['novel']->slug
+            ],
+            'algorithm_used' => $data['algorithm']
+        ], 200);
+    }
 }
 
