@@ -176,14 +176,15 @@ class UserController extends Controller
             ->count();
 
         // Reading days this month (distinct days with reading progress updates)
-        $readingDaysThisMonth = ReadingProgress::where('user_id', $user->id)
-            ->whereMonth('last_read_at', Carbon::now()->month)
-            ->whereYear('last_read_at', Carbon::now()->year)
-            ->get()
-            ->groupBy(function ($item) {
-                return Carbon::parse($item->last_read_at)->format('Y-m-d');
-            })
-            ->count();
+        // DOESNT WORK YET
+        // $readingDaysThisMonth = ReadingProgress::where('user_id', $user->id)
+        //     ->whereMonth('last_read_at', Carbon::now()->month)
+        //     ->whereYear('last_read_at', Carbon::now()->year)
+        //     ->get()
+        //     ->groupBy(function ($item) {
+        //         return Carbon::parse($item->last_read_at)->format('Y-m-d');
+        //     })
+        //     ->count();
 
         return [
             'total_comments' => $totalComments,
@@ -192,7 +193,7 @@ class UserController extends Controller
             'this_month' => [
                 'comments' => $commentsThisMonth,
                 'ratings' => $ratingsThisMonth,
-                'reading_days' => $readingDaysThisMonth,
+                // 'reading_days' => $readingDaysThisMonth,
             ],
         ];
     }
