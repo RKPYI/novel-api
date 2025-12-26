@@ -137,6 +137,8 @@ class AuthController extends Controller
                 'role' => $user->role,
                 'avatar' => $user->avatar,
                 'bio' => $user->bio,
+                'provider' => $user->provider,
+                'provider_id' => $user->provider_id,
                 'is_admin' => $user->isAdmin(),
                 'last_login_at' => $user->last_login_at,
                 'created_at' => $user->created_at,
