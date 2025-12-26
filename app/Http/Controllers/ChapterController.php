@@ -300,27 +300,30 @@ class ChapterController extends Controller
 
         $chapterIds = $request->chapter_ids;
 
-        // Verify all chapters belong to the specified novel
-        $chaptersToDelete = Chapter::whereIn('id', $chapterIds)
+        // Verify all chapters belong to the specified novel and count them
+        $deletedCount = Chapter::whereIn('id', $chapterIds)
             ->where('novel_id', $novel->id)
-            ->get();
+            ->count();
 
-        if ($chaptersToDelete->count() !== count($chapterIds)) {
+        if ($deletedCount !== count($chapterIds)) {
             return response()->json([
                 'message' => 'One or more chapters do not belong to this novel or do not exist'
             ], 400);
         }
 
-        // Delete the chapters
-        $deletedCount = Chapter::whereIn('id', $chapterIds)
+        // Perform bulk delete (single DELETE query for performance)
+        // Note: This bypasses model events, so we manually update total_chapters below
+        Chapter::whereIn('id', $chapterIds)
             ->where('novel_id', $novel->id)
             ->delete();
 
+        // Manually decrement total_chapters by the number of deleted chapters
+        // This is safe because we validated all chapters belong to this novel above
+        $novel->decrement('total_chapters', $deletedCount);
+        $novel->touch(); // Update the updated_at timestamp
+
         // Clear cache for this novel's chapters
         Cache::forget("chapters_novel_{$novel->id}");
-
-        // Note: total_chapters is automatically updated by the Chapter model's deleted event
-        // No need to manually update it here
 
         return response()->json([
             'message' => "Successfully deleted {$deletedCount} chapter(s)",
