@@ -275,20 +275,47 @@ class NovelController extends Controller
     }
 
     /**
-     * Get recently updated novels.
+     * Get recently updated novels (novels with newest chapters).
      */
-    public function recentlyUpdated()
+    public function recentlyUpdated(Request $request)
     {
+        // Get limit from request, default to 20, max 50
+        $limit = min($request->get('limit', 20), 50);
+
         // Cache recently updated for 10 minutes
-        $novels = CacheHelper::remember('novels_recently_updated', now()->addMinutes(10), function () {
-            return Novel::with('genres')
-                ->orderBy('updated_at', 'desc')
-                ->limit(12)
+        $cacheKey = 'novels_recently_updated_' . $limit;
+
+        $novels = CacheHelper::remember($cacheKey, now()->addMinutes(10), function () use ($limit) {
+            // Get novels ordered by their most recent chapter's created_at
+            // Include latest chapter info using subqueries
+            return Novel::with(['genres'])
+                ->addSelect([
+                    'novels.*',
+                    'latest_chapter_created_at' => \App\Models\Chapter::select('created_at')
+                        ->whereColumn('novel_id', 'novels.id')
+                        ->orderBy('created_at', 'desc')
+                        ->limit(1),
+                    'latest_chapter_number' => \App\Models\Chapter::select('chapter_number')
+                        ->whereColumn('novel_id', 'novels.id')
+                        ->orderBy('created_at', 'desc')
+                        ->limit(1),
+                    'latest_chapter_title' => \App\Models\Chapter::select('title')
+                        ->whereColumn('novel_id', 'novels.id')
+                        ->orderBy('created_at', 'desc')
+                        ->limit(1),
+                    'latest_chapter_id' => \App\Models\Chapter::select('id')
+                        ->whereColumn('novel_id', 'novels.id')
+                        ->orderBy('created_at', 'desc')
+                        ->limit(1)
+                ])
+                ->whereHas('chapters') // Only novels with at least one chapter
+                ->orderBy('latest_chapter_created_at', 'desc')
+                ->limit($limit)
                 ->get();
         }, ['novels', 'novels-updated']);
 
         return response()->json([
-            'message' => 'Recently updated novels',
+            'message' => 'Recently updated novels (with new chapters)',
             'novels' => $novels
         ]);
     }
@@ -374,7 +401,7 @@ class NovelController extends Controller
         $deletedCount = 0;
         if (!empty($authorizedNovelIds)) {
             $deletedCount = Novel::whereIn('id', $authorizedNovelIds)->delete();
-            
+
             // Clear related caches using CacheHelper
             CacheHelper::clearNovelCaches();
         }

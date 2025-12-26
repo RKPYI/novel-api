@@ -81,6 +81,7 @@ Route::get('novels/search', [NovelController::class, 'search']);
 // Novel routes - read operations
 Route::get('novels/popular', [NovelController::class, 'popular']);
 Route::get('novels/latest', [NovelController::class, 'latest']);
+Route::get('novels/recently-updated', [NovelController::class, 'recentlyUpdated']);
 Route::get('novels/recommendations', [NovelController::class, 'recommendations']);
 Route::get('novels/genres', [NovelController::class, 'genres']);
 Route::get('novels', [NovelController::class, 'index']);
