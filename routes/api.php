@@ -10,6 +10,7 @@ use App\Http\Controllers\NovelController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RatingController;
 use App\Http\Controllers\ReadingProgressController;
+use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserLibraryController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +36,11 @@ Route::prefix('auth')->middleware(['auth:sanctum'])->group(function () {
     Route::put('change-password', [AuthController::class, 'changePassword']);
     Route::post('email/verification-notification', [AuthController::class, 'sendEmailVerification']);
     Route::post('email/resend-verification', [AuthController::class, 'resendEmailVerification']);
+});
+
+// User profile routes
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('user/profile/stats', [UserController::class, 'getProfileStats']);
 });
 
 Route::get('/user', function (Request $request) {
