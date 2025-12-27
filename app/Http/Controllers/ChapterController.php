@@ -119,18 +119,25 @@ class ChapterController extends Controller
      */
     public function show(Novel $novel, $chapterNumber)
     {
-        // Cache chapter content for 1 hour (chapters rarely change after publishing)
-        $cacheKey = "chapter_{$novel->id}_{$chapterNumber}";
+        // Find the chapter first (not cached) to increment views and get fresh data
+        $chapter = Chapter::where('novel_id', $novel->id)
+            ->where('chapter_number', $chapterNumber)
+            ->first();
 
-        $chapterData = Cache::remember($cacheKey, now()->addHour(), function () use ($novel, $chapterNumber) {
-            $chapter = Chapter::where('novel_id', $novel->id)
-                ->where('chapter_number', $chapterNumber)
-                ->first();
+        if (!$chapter) {
+            return response()->json([
+                'message' => 'Chapter not found'
+            ], 404);
+        }
 
-            if (!$chapter) {
-                return null;
-            }
+        // Increment view count and refresh the model to get updated views
+        $chapter->increment('views');
+        $chapter->refresh();
 
+        // Cache the navigation data (previous/next chapters) for 1 hour
+        $cacheKey = "chapter_nav_{$novel->id}_{$chapterNumber}";
+
+        $navigation = Cache::remember($cacheKey, now()->addHour(), function () use ($novel, $chapter) {
             // Get previous chapter (chapter with smaller chapter_number)
             $previousChapter = Chapter::where('novel_id', $novel->id)
                 ->where('chapter_number', '<', $chapter->chapter_number)
@@ -143,24 +150,16 @@ class ChapterController extends Controller
                 ->orderBy('chapter_number', 'asc')
                 ->first();
 
-            // Add navigation info to chapter data
-            $data = $chapter->toArray();
-            $data['previous_chapter'] = $previousChapter ? $previousChapter->chapter_number : null;
-            $data['next_chapter'] = $nextChapter ? $nextChapter->chapter_number : null;
-
-            return $data;
+            return [
+                'previous_chapter' => $previousChapter ? $previousChapter->chapter_number : null,
+                'next_chapter' => $nextChapter ? $nextChapter->chapter_number : null,
+            ];
         });
 
-        if (!$chapterData) {
-            return response()->json([
-                'message' => 'Chapter not found'
-            ], 404);
-        }
-
-        // Increment view count (don't cache this, run every time)
-        Chapter::where('novel_id', $novel->id)
-            ->where('chapter_number', $chapterNumber)
-            ->increment('views');
+        // Merge navigation data with fresh chapter data
+        $chapterData = $chapter->toArray();
+        $chapterData['previous_chapter'] = $navigation['previous_chapter'];
+        $chapterData['next_chapter'] = $navigation['next_chapter'];
 
         return response()->json([
             'message' => 'Chapter details',
