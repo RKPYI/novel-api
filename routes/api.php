@@ -43,10 +43,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('user/profile/stats', [UserController::class, 'getProfileStats']);
 });
 
-Route::get('/user', function (Request $request) {
-    return $request->user();
-})->middleware(['auth:sanctum']);
-
 // Author application routes
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('author/apply', [AuthorApplicationController::class, 'apply']);

@@ -75,9 +75,6 @@ Middleware:
 - `POST /auth/email/verification-notification` → `AuthController@sendEmailVerification`
 - `POST /auth/email/resend-verification` → `AuthController@resendEmailVerification`
 
-Other:
-- `GET /user` (closure) — returns authenticated user.
-
 ### Request/Response behavior (from `AuthController`)
 
 #### `POST /auth/register`
