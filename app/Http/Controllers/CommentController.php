@@ -21,9 +21,17 @@ class CommentController extends Controller
             ->where('is_approved', true);
 
         if ($chapterNumber) {
-            $chapter = Chapter::where('novel_id', $novel->id)
-                ->where('id', $chapterNumber) // Changed 'chapter_number' to 'id'
-                ->firstOrFail();
+            // Find chapter by chapter_number within this novel
+            $chapter = Chapter::where('chapter_number', $chapterNumber)
+                ->where('novel_id', $novel->id)
+                ->first();
+
+            if (!$chapter) {
+                return response()->json([
+                    'message' => "Chapter {$chapterNumber} not found in novel '{$novel->title}'"
+                ], 404);
+            }
+
             $baseQuery->where('chapter_id', $chapter->id);
         } else {
             $baseQuery->whereNull('chapter_id'); // Novel comments only
