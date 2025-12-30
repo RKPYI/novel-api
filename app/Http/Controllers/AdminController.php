@@ -40,7 +40,7 @@ class AdminController extends Controller
                     'admins' => User::where('role', User::ROLE_ADMIN)->count(),
                 ]
             ],
-            
+
             // Content statistics
             'content' => [
                 'novels' => Novel::count(),
@@ -50,7 +50,7 @@ class AdminController extends Controller
                 'pending_comments' => Comment::where('is_approved', false)->count(),
                 'novels_this_month' => Novel::whereMonth('created_at', now()->month)->count(),
             ],
-            
+
             // Engagement statistics
             'engagement' => [
                 'total_views' => Novel::sum('views'),
@@ -64,7 +64,7 @@ class AdminController extends Controller
                     ->limit(5)
                     ->get(),
             ],
-            
+
             // Author applications
             'author_applications' => [
                 'pending' => AuthorApplication::where('status', AuthorApplication::STATUS_PENDING)->count(),
@@ -87,7 +87,7 @@ class AdminController extends Controller
         }
 
         $limit = $request->query('limit', 20);
-        
+
         // Get recent activities from different models
         $recentUsers = User::select('id', 'name', 'email', 'created_at', DB::raw("'user_registered' as activity_type"))
             ->latest()
@@ -190,7 +190,7 @@ class AdminController extends Controller
 
         return response()->json([
             'message' => 'User updated successfully',
-            'user' => $user->fresh(['id', 'name', 'email', 'role', 'is_active', 'email_verified_at'])
+            'user' => $user->only(['id', 'name', 'email', 'role', 'is_active', 'email_verified_at'])
         ]);
     }
 
@@ -204,7 +204,7 @@ class AdminController extends Controller
         }
 
         $type = $request->query('type', 'all'); // comments, novels, all
-        
+
         $data = [];
 
         if ($type === 'all' || $type === 'comments') {
