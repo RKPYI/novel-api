@@ -238,22 +238,161 @@ class AdminController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        // Basic system metrics
+        // Database health check
+        $databaseStatus = 'healthy';
+        $totalTables = 'unknown';
+        try {
+            DB::connection()->getPdo();
+            $tablesResult = DB::select("SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = ?", [config('database.connections.mysql.database')]);
+            $totalTables = $tablesResult[0]->count ?? 'unknown';
+        } catch (\Exception $e) {
+            $databaseStatus = 'unhealthy';
+        }
+
+        // Cache health check
+        $cacheStatus = 'healthy';
+        try {
+            $testKey = 'health_check_' . time();
+            cache()->put($testKey, 'test', 5);
+            $retrieved = cache()->get($testKey);
+            cache()->forget($testKey);
+            if ($retrieved !== 'test') {
+                $cacheStatus = 'unhealthy';
+            }
+        } catch (\Exception $e) {
+            $cacheStatus = 'unhealthy';
+        }
+
+        // Storage health check
+        $storageStatus = 'healthy';
+        try {
+            $storagePath = storage_path('app');
+            if (!is_writable($storagePath)) {
+                $storageStatus = 'unhealthy';
+            }
+        } catch (\Exception $e) {
+            $storageStatus = 'unhealthy';
+        }
+
+        // Recent errors from logs
+        $errorMessages = [];
+        $criticalErrorMessages = [];
+        $countToday = 0;
+        $criticalErrors = 0;
+
+        try {
+            $logPath = storage_path('logs/laravel.log');
+            if (file_exists($logPath)) {
+                $today = now()->toDateString();
+
+                // Read file from bottom to get recent errors first
+                $file = new \SplFileObject($logPath);
+                $file->seek(PHP_INT_MAX);
+                $lastLine = $file->key();
+
+                // Read last 1000 lines or entire file if smaller
+                $startLine = max(0, $lastLine - 1000);
+                $lines = [];
+
+                $file->seek($startLine);
+                while (!$file->eof()) {
+                    $lines[] = $file->current();
+                    $file->next();
+                }
+
+                // Reverse to get newest first
+                $lines = array_reverse($lines);
+
+                $currentError = '';
+                $currentLevel = '';
+                $currentTimestamp = '';
+
+                foreach ($lines as $line) {
+                    // Check if line starts a new log entry
+                    if (preg_match('/^\[(\d{4}-\d{2}-\d{2}[^\]]+)\]\s+(\w+)\.(\w+):(.*)/', $line, $matches)) {
+                        // Save previous error if it was from today and an error level
+                        if ($currentError && strpos($currentTimestamp, $today) !== false &&
+                            in_array($currentLevel, ['ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY'])) {
+
+                            $errorData = [
+                                'timestamp' => $currentTimestamp,
+                                'level' => $currentLevel,
+                                'message' => trim($currentError),
+                            ];
+
+                            if (in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY'])) {
+                                if (count($criticalErrorMessages) < 10) {
+                                    $criticalErrorMessages[] = $errorData;
+                                }
+                            } elseif ($currentLevel === 'ERROR' && count($errorMessages) < 20) {
+                                $errorMessages[] = $errorData;
+                            }
+                        }
+
+                        // Start new error
+                        $currentTimestamp = $matches[1];
+                        $currentLevel = $matches[3];
+                        $currentError = $matches[4];
+
+                        // Count if from today and is error level
+                        if (strpos($currentTimestamp, $today) !== false) {
+                            if (in_array($currentLevel, ['ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY'])) {
+                                $countToday++;
+                                if (in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY'])) {
+                                    $criticalErrors++;
+                                }
+                            }
+                        }
+                    } else {
+                        // Continuation of previous error (stack trace, etc.)
+                        $currentError .= "\n" . $line;
+                    }
+
+                    // Stop if we have enough errors from today
+                    if (count($errorMessages) >= 20 && count($criticalErrorMessages) >= 10 && strpos($currentTimestamp, $today) === false) {
+                        break;
+                    }
+                }
+
+                // Don't forget the last error if it's from today and an error level
+                if ($currentError && strpos($currentTimestamp, $today) !== false &&
+                    in_array($currentLevel, ['ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY'])) {
+
+                    $errorData = [
+                        'timestamp' => $currentTimestamp,
+                        'level' => $currentLevel,
+                        'message' => trim($currentError),
+                    ];
+
+                    if (in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY'])) {
+                        if (count($criticalErrorMessages) < 10) {
+                            $criticalErrorMessages[] = $errorData;
+                        }
+                    } elseif ($currentLevel === 'ERROR' && count($errorMessages) < 20) {
+                        $errorMessages[] = $errorData;
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            // Silently fail if we can't read logs
+        }
+
         $health = [
             'database' => [
-                'status' => 'healthy', // Would implement actual health check
-                'total_tables' => DB::select("SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = ?", [config('database.connections.mysql.database')])[0]->count ?? 'unknown',
+                'status' => $databaseStatus,
+                'total_tables' => $totalTables,
             ],
             'cache' => [
-                'status' => 'healthy', // Would implement cache health check
+                'status' => $cacheStatus,
             ],
             'storage' => [
-                'status' => 'healthy', // Would implement storage health check
+                'status' => $storageStatus,
             ],
             'recent_errors' => [
-                // Could pull from logs
-                'count_today' => 0,
-                'critical_errors' => 0,
+                'count_today' => $countToday,
+                'critical_errors' => $criticalErrors,
+                'critical_messages' => $criticalErrorMessages,
+                'error_messages' => $errorMessages,
             ]
         ];
 
