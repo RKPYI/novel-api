@@ -6,6 +6,7 @@ use App\Http\Controllers\AuthorApplicationController;
 use App\Http\Controllers\AuthorController;
 use App\Http\Controllers\ChapterController;
 use App\Http\Controllers\CommentController;
+use App\Http\Controllers\ContactController;
 use App\Http\Controllers\NovelController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RatingController;
@@ -176,4 +177,22 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::put('notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::put('notifications/{notification}/unread', [NotificationController::class, 'markAsUnread']);
     Route::delete('notifications/{notification}', [NotificationController::class, 'destroy']);
+});
+
+// Contact routes - public route for submitting contact form
+Route::post('contact', [ContactController::class, 'store']);
+
+// Contact routes - authenticated users can view their own contacts
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('my-contacts', [ContactController::class, 'myContacts']);
+    Route::get('my-contacts/{contact}', [ContactController::class, 'showMyContact']);
+});
+
+// Contact routes - admin only
+Route::middleware(['auth:sanctum', 'admin'])->group(function () {
+    Route::get('admin/contacts', [ContactController::class, 'index']);
+    Route::get('admin/contacts/{contact}', [ContactController::class, 'show']);
+    Route::put('admin/contacts/{contact}/status', [ContactController::class, 'updateStatus']);
+    Route::post('admin/contacts/{contact}/respond', [ContactController::class, 'respond']);
+    Route::delete('admin/contacts/{contact}', [ContactController::class, 'destroy']);
 });
