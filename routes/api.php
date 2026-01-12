@@ -42,6 +42,10 @@ Route::prefix('auth')->middleware(['auth:sanctum'])->group(function () {
 // User profile routes
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('user/profile/stats', [UserController::class, 'getProfileStats']);
+
+    // User avatar upload
+    Route::post('user/avatar', [UserController::class, 'uploadAvatar']);
+    Route::delete('user/avatar', [UserController::class, 'deleteAvatar']);
 });
 
 // Author application routes
@@ -97,6 +101,10 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
     Route::put('novels/{slug}', [NovelController::class, 'update']);
     Route::delete('novels/{slug}', [NovelController::class, 'destroy']);
     Route::post('novels/bulk-delete', [NovelController::class, 'bulkDestroy']);
+
+    // Novel cover image upload
+    Route::post('novels/{slug}/cover', [NovelController::class, 'uploadCover']);
+    Route::delete('novels/{slug}/cover', [NovelController::class, 'deleteCover']);
 });
 
 // Chapter routes - read operations

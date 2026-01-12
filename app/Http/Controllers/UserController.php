@@ -11,7 +11,9 @@ use App\Models\Novel;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
+use App\Helpers\ImageUploadHelper;
 
 class UserController extends Controller
 {
@@ -322,5 +324,102 @@ class UserController extends Controller
 
         // Return only the 10 most recent
         return array_slice($activities, 0, 10);
+    }
+
+    /**
+     * Upload user profile avatar
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function uploadAvatar(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $request->validate([
+            'avatar' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // 5MB max
+        ]);
+
+        try {
+            // Get old avatar path for deletion (only if it's a local file)
+            $oldAvatarPath = null;
+            if ($user->avatar && !filter_var($user->avatar, FILTER_VALIDATE_URL)) {
+                $oldAvatarPath = $user->avatar;
+            }
+
+            // Upload and process the image
+            $avatarUrl = ImageUploadHelper::uploadUserAvatar(
+                $request->file('avatar'),
+                $user->id,
+                $oldAvatarPath
+            );
+
+            // Update user's avatar field
+            $user->avatar = $avatarUrl;
+            $user->save();
+
+            // Clear user-related caches
+            Cache::forget("user_{$user->id}");
+            Cache::forget("user_profile_{$user->id}");
+
+            return response()->json([
+                'message' => 'Avatar uploaded successfully',
+                'avatar_url' => $user->avatar,
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'avatar' => $user->avatar,
+                    'bio' => $user->bio,
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to upload avatar',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete user profile avatar
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function deleteAvatar(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        try {
+            // Delete the avatar file if it's a local file
+            if ($user->avatar && !filter_var($user->avatar, FILTER_VALIDATE_URL)) {
+                ImageUploadHelper::deleteUserAvatar($user->avatar);
+            }
+
+            // Clear the avatar field
+            $user->avatar = null;
+            $user->save();
+
+            // Clear user-related caches
+            Cache::forget("user_{$user->id}");
+            Cache::forget("user_profile_{$user->id}");
+
+            return response()->json([
+                'message' => 'Avatar deleted successfully',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'avatar' => $user->avatar,
+                    'bio' => $user->bio,
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to delete avatar',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

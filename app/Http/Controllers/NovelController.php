@@ -9,6 +9,7 @@ use App\Models\ReadingProgress;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use App\Helpers\CacheHelper;
+use App\Helpers\ImageUploadHelper;
 
 class NovelController extends Controller
 {
@@ -196,6 +197,9 @@ class NovelController extends Controller
                 'message' => 'You can only delete your own novels'
             ], 403);
         }
+
+        // Delete novel's cover image and directory
+        ImageUploadHelper::deleteNovelDirectory($novel->slug);
 
         $novel->delete();
 
@@ -519,6 +523,112 @@ class NovelController extends Controller
             ],
             'algorithm_used' => $data['algorithm']
         ], 200);
+    }
+
+    /**
+     * Upload a cover image for a novel.
+     */
+    public function uploadCover(Request $request, string $slug)
+    {
+        $novel = Novel::where('slug', $slug)->first();
+
+        if (!$novel) {
+            return response()->json([
+                'message' => 'Novel not found'
+            ], 404);
+        }
+
+        // Check ownership (only owner or admin can upload)
+        if ($novel->user_id !== $request->user()->id && !$request->user()->isAdmin()) {
+            return response()->json([
+                'message' => 'You can only upload covers for your own novels'
+            ], 403);
+        }
+
+        $request->validate([
+            'cover' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // 5MB max
+        ]);
+
+        try {
+            // Get old cover path for deletion
+            $oldCoverPath = null;
+            if ($novel->cover_image && !filter_var($novel->cover_image, FILTER_VALIDATE_URL)) {
+                $oldCoverPath = str_replace('/storage/', '', $novel->cover_image);
+            }
+
+            // Upload and process the image
+            $coverUrl = ImageUploadHelper::uploadNovelCover(
+                $request->file('cover'),
+                $novel->slug,
+                $oldCoverPath
+            );
+
+            // Update novel's cover_image field
+            $novel->cover_image = $coverUrl;
+            $novel->save();
+
+            // Clear novel-related caches
+            CacheHelper::clearNovelCaches($novel->id, $novel->slug);
+
+            // Refresh model to get accessor values
+            $novel->refresh();
+
+            return response()->json([
+                'message' => 'Cover image uploaded successfully',
+                'cover_url' => $novel->cover_image,
+                'novel' => $novel
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to upload cover image',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a novel's cover image.
+     */
+    public function deleteCover(Request $request, string $slug)
+    {
+        $novel = Novel::where('slug', $slug)->first();
+
+        if (!$novel) {
+            return response()->json([
+                'message' => 'Novel not found'
+            ], 404);
+        }
+
+        // Check ownership (only owner or admin can delete)
+        if ($novel->user_id !== $request->user()->id && !$request->user()->isAdmin()) {
+            return response()->json([
+                'message' => 'You can only delete covers for your own novels'
+            ], 403);
+        }
+
+        try {
+            // Delete the cover image file
+            if ($novel->cover_image && !filter_var($novel->cover_image, FILTER_VALIDATE_URL)) {
+                ImageUploadHelper::deleteNovelCover($novel->slug);
+            }
+
+            // Clear the cover_image field
+            $novel->cover_image = null;
+            $novel->save();
+
+            // Clear novel-related caches
+            CacheHelper::clearNovelCaches($novel->id, $novel->slug);
+
+            return response()->json([
+                'message' => 'Cover image deleted successfully',
+                'novel' => $novel
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to delete cover image',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }
 
