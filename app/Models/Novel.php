@@ -34,7 +34,7 @@ class Novel extends Model
 
     public function genres()
     {
-        return $this->belongsToMany(Genre::class);
+        return $this->belongsToMany(Genre::class, 'genre_novel');
     }
 
     public function readingProgress()
