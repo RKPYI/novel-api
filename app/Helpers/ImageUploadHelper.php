@@ -10,7 +10,7 @@ class ImageUploadHelper
 {
     /**
      * Upload and process a novel cover image
-     * Saves to: /novels/:novel-slug/cover_img.png
+     * Saves to: /novels/:novel-slug/cover_img.webp
      *
      * @param UploadedFile $file
      * @param string $novelSlug
@@ -24,15 +24,21 @@ class ImageUploadHelper
 
         // Define directory and filename
         $directory = "novels/{$novelSlug}";
-        $filename = 'cover_img.png';
+        $filename = 'cover_img.webp';
         $fullPath = "{$directory}/{$filename}";
 
-        // Delete old cover if exists and is different
+        // Delete old cover if exists (support both .png and .webp extensions)
         if ($oldCoverPath && Storage::disk('public')->exists($oldCoverPath)) {
             Storage::disk('public')->delete($oldCoverPath);
         }
 
-        // Process and optimize image
+        // Also delete old PNG version if it exists (for migration)
+        $oldPngPath = "novels/{$novelSlug}/cover_img.png";
+        if (Storage::disk('public')->exists($oldPngPath)) {
+            Storage::disk('public')->delete($oldPngPath);
+        }
+
+        // Process and optimize image with auto-compression
         $processedImage = self::processImage($file, 800, 1200); // 2:3 ratio for book covers
 
         // Store the processed image
@@ -48,7 +54,7 @@ class ImageUploadHelper
 
     /**
      * Upload and process a user profile image
-     * Saves to: /profiles/:unique-hash.png
+     * Saves to: /profiles/:unique-hash.webp
      *
      * @param UploadedFile $file
      * @param int $userId
@@ -63,7 +69,7 @@ class ImageUploadHelper
         // Generate unique filename using user ID and timestamp
         $hash = hash('sha256', $userId . now()->timestamp . Str::random(16));
         $directory = 'profiles';
-        $filename = "{$hash}.png";
+        $filename = "{$hash}.webp";
         $fullPath = "{$directory}/{$filename}";
 
         // Delete old avatar if exists and is a local file (not external URL)
@@ -74,7 +80,7 @@ class ImageUploadHelper
             }
         }
 
-        // Process and optimize image (square crop for avatars)
+        // Process and optimize image (square crop for avatars) with auto-compression
         $processedImage = self::processImage($file, 400, 400, true);
 
         // Store the processed image
@@ -89,7 +95,8 @@ class ImageUploadHelper
     }
 
     /**
-     * Process and optimize an image
+     * Process and optimize an image with auto-compression
+     * Converts all images to WebP format for maximum compression
      *
      * @param UploadedFile $file
      * @param int $maxWidth
@@ -99,8 +106,6 @@ class ImageUploadHelper
      */
     protected static function processImage(UploadedFile $file, int $maxWidth, int $maxHeight, bool $crop = false): string
     {
-        $extension = $file->getClientOriginalExtension();
-
         // Read the image
         $imageData = file_get_contents($file->getPathname());
 
@@ -122,7 +127,7 @@ class ImageUploadHelper
 
             $newImage = imagecreatetruecolor($maxWidth, $maxHeight);
 
-            // Preserve transparency for PNG
+            // Preserve transparency for WebP
             imagealphablending($newImage, false);
             imagesavealpha($newImage, true);
 
@@ -139,7 +144,7 @@ class ImageUploadHelper
 
             $newImage = imagecreatetruecolor($newWidth, $newHeight);
 
-            // Preserve transparency for PNG
+            // Preserve transparency for WebP
             imagealphablending($newImage, false);
             imagesavealpha($newImage, true);
 
@@ -150,9 +155,13 @@ class ImageUploadHelper
             );
         }
 
-        // Output to string
+        // Determine quality based on original file size for auto-compression
+        $originalSize = $file->getSize();
+        $quality = self::calculateCompressionQuality($originalSize);
+
+        // Output to WebP format with auto-compression
         ob_start();
-        imagepng($newImage, null, 9); // Max compression
+        imagewebp($newImage, null, $quality);
         $processedImageData = ob_get_clean();
 
         // Free memory
@@ -163,23 +172,50 @@ class ImageUploadHelper
     }
 
     /**
+     * Calculate optimal compression quality based on file size
+     * Larger files get more aggressive compression
+     *
+     * @param int $fileSize File size in bytes
+     * @return int Quality value (0-100)
+     */
+    protected static function calculateCompressionQuality(int $fileSize): int
+    {
+        $sizeMB = $fileSize / (1024 * 1024);
+
+        if ($sizeMB < 0.5) {
+            return 90; // Small files: high quality
+        } elseif ($sizeMB < 1) {
+            return 85; // Medium files: good quality
+        } elseif ($sizeMB < 3) {
+            return 80; // Larger files: balanced
+        } elseif ($sizeMB < 5) {
+            return 75; // Big files: more compression
+        } elseif ($sizeMB < 10) {
+            return 70; // Very big files: aggressive compression
+        } else {
+            return 65; // Huge files: maximum compression
+        }
+    }
+
+    /**
      * Validate uploaded image file
+     * Now more lenient with file sizes since we auto-compress
      *
      * @param UploadedFile $file
      * @throws \Exception
      */
     protected static function validateImage(UploadedFile $file): void
     {
-        // Validate MIME type
+        // Validate MIME type - now supports JPEG, JPG, PNG, GIF, and WebP
         $allowedMimes = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp'];
         if (!in_array($file->getMimeType(), $allowedMimes)) {
-            throw new \Exception('Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.');
+            throw new \Exception('Invalid file type. Only JPEG, JPG, PNG, GIF, and WebP images are allowed.');
         }
 
-        // Validate file size (max 5MB)
-        $maxSize = 5 * 1024 * 1024; // 5MB in bytes
+        // More lenient file size validation (max 20MB, since we'll compress it)
+        $maxSize = 20 * 1024 * 1024; // 20MB in bytes
         if ($file->getSize() > $maxSize) {
-            throw new \Exception('File size exceeds maximum allowed size of 5MB.');
+            throw new \Exception('File size exceeds maximum allowed size of 20MB.');
         }
 
         // Validate image dimensions
@@ -193,32 +229,40 @@ class ImageUploadHelper
             throw new \Exception('Image dimensions too small. Minimum size is 100x100 pixels.');
         }
 
-        if ($width > 5000 || $height > 5000) {
-            throw new \Exception('Image dimensions too large. Maximum size is 5000x5000 pixels.');
+        if ($width > 10000 || $height > 10000) {
+            throw new \Exception('Image dimensions too large. Maximum size is 10000x10000 pixels.');
         }
     }
 
     /**
-     * Delete a novel cover image
+     * Delete a novel cover image (supports both .webp and legacy .png)
      *
      * @param string $novelSlug
      * @return bool
      */
     public static function deleteNovelCover(string $novelSlug): bool
     {
-        $path = "novels/{$novelSlug}/cover_img.png";
+        $deleted = false;
 
-        if (Storage::disk('public')->exists($path)) {
-            return Storage::disk('public')->delete($path);
+        // Delete WebP version
+        $pathWebp = "novels/{$novelSlug}/cover_img.webp";
+        if (Storage::disk('public')->exists($pathWebp)) {
+            $deleted = Storage::disk('public')->delete($pathWebp) || $deleted;
         }
 
-        return true;
+        // Delete PNG version (legacy support)
+        $pathPng = "novels/{$novelSlug}/cover_img.png";
+        if (Storage::disk('public')->exists($pathPng)) {
+            $deleted = Storage::disk('public')->delete($pathPng) || $deleted;
+        }
+
+        return $deleted ?: true;
     }
 
     /**
      * Delete a user avatar image
      *
-     * @param string $avatarPath The URL path like /storage/profiles/hash.png
+     * @param string $avatarPath The URL path like /storage/profiles/hash.webp
      * @return bool
      */
     public static function deleteUserAvatar(string $avatarPath): bool
@@ -256,31 +300,38 @@ class ImageUploadHelper
     }
 
     /**
-     * Get the public URL for a novel cover
+     * Get the public URL for a novel cover (checks both .webp and .png)
      *
      * @param string $novelSlug
      * @return string|null
      */
     public static function getNovelCoverUrl(string $novelSlug): ?string
     {
-        $path = "novels/{$novelSlug}/cover_img.png";
+        // Check for WebP version first (preferred)
+        $pathWebp = "novels/{$novelSlug}/cover_img.webp";
+        if (Storage::disk('public')->exists($pathWebp)) {
+            return "/storage/{$pathWebp}";
+        }
 
-        if (Storage::disk('public')->exists($path)) {
-            return "/storage/{$path}";
+        // Fallback to PNG version (legacy)
+        $pathPng = "novels/{$novelSlug}/cover_img.png";
+        if (Storage::disk('public')->exists($pathPng)) {
+            return "/storage/{$pathPng}";
         }
 
         return null;
     }
 
     /**
-     * Check if a novel has a cover image
+     * Check if a novel has a cover image (checks both .webp and .png)
      *
      * @param string $novelSlug
      * @return bool
      */
     public static function novelHasCover(string $novelSlug): bool
     {
-        $path = "novels/{$novelSlug}/cover_img.png";
-        return Storage::disk('public')->exists($path);
+        $pathWebp = "novels/{$novelSlug}/cover_img.webp";
+        $pathPng = "novels/{$novelSlug}/cover_img.png";
+        return Storage::disk('public')->exists($pathWebp) || Storage::disk('public')->exists($pathPng);
     }
 }
