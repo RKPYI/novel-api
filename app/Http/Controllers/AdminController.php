@@ -280,6 +280,23 @@ class AdminController extends Controller
         $countToday = 0;
         $criticalErrors = 0;
 
+        // Critical error patterns - infrastructure failures that should be treated as critical
+        $criticalPatterns = [
+            'RedisException',
+            'No connection could be made',
+            'Connection refused',
+            'Database.*not connected',
+            'SQLSTATE',
+            'could not connect to server',
+            'SSL certificate problem',
+            'cURL error 60',
+            'OAuth.*failed',
+            'Storage.*not writable',
+            'disk.*full',
+            'Memory exhausted',
+            'Maximum execution time',
+        ];
+
         try {
             $logPath = storage_path('logs/laravel.log');
             if (file_exists($logPath)) {
@@ -314,13 +331,26 @@ class AdminController extends Controller
                         if ($currentError && strpos($currentTimestamp, $today) !== false &&
                             in_array($currentLevel, ['ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY'])) {
 
+                            // Check if ERROR message contains critical patterns
+                            $isCriticalError = in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY']);
+                            
+                            if (!$isCriticalError && $currentLevel === 'ERROR') {
+                                foreach ($criticalPatterns as $pattern) {
+                                    if (preg_match('/' . $pattern . '/i', $currentError)) {
+                                        $isCriticalError = true;
+                                        break;
+                                    }
+                                }
+                            }
+
                             $errorData = [
                                 'timestamp' => $currentTimestamp,
                                 'level' => $currentLevel,
                                 'message' => trim($currentError),
+                                'is_infrastructure_failure' => $isCriticalError && $currentLevel === 'ERROR',
                             ];
 
-                            if (in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY'])) {
+                            if ($isCriticalError) {
                                 if (count($criticalErrorMessages) < 10) {
                                     $criticalErrorMessages[] = $errorData;
                                 }
@@ -338,7 +368,19 @@ class AdminController extends Controller
                         if (strpos($currentTimestamp, $today) !== false) {
                             if (in_array($currentLevel, ['ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY'])) {
                                 $countToday++;
-                                if (in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY'])) {
+                                
+                                // Also check if ERROR contains critical patterns for counting
+                                $isCritical = in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY']);
+                                if (!$isCritical && $currentLevel === 'ERROR') {
+                                    foreach ($criticalPatterns as $pattern) {
+                                        if (preg_match('/' . $pattern . '/i', $currentError)) {
+                                            $isCritical = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                if ($isCritical) {
                                     $criticalErrors++;
                                 }
                             }
@@ -358,13 +400,26 @@ class AdminController extends Controller
                 if ($currentError && strpos($currentTimestamp, $today) !== false &&
                     in_array($currentLevel, ['ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY'])) {
 
+                    // Check if ERROR message contains critical patterns
+                    $isCriticalError = in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY']);
+                    
+                    if (!$isCriticalError && $currentLevel === 'ERROR') {
+                        foreach ($criticalPatterns as $pattern) {
+                            if (preg_match('/' . $pattern . '/i', $currentError)) {
+                                $isCriticalError = true;
+                                break;
+                            }
+                        }
+                    }
+
                     $errorData = [
                         'timestamp' => $currentTimestamp,
                         'level' => $currentLevel,
                         'message' => trim($currentError),
+                        'is_infrastructure_failure' => $isCriticalError && $currentLevel === 'ERROR',
                     ];
 
-                    if (in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY'])) {
+                    if ($isCriticalError) {
                         if (count($criticalErrorMessages) < 10) {
                             $criticalErrorMessages[] = $errorData;
                         }

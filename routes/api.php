@@ -7,6 +7,7 @@ use App\Http\Controllers\AuthorController;
 use App\Http\Controllers\ChapterController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\NovelController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RatingController;
@@ -15,6 +16,11 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserLibraryController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\DB;
+
+// Public health check endpoint - no authentication required
+// Used by monitoring systems and can work even if database is down
+Route::get('health', [HealthController::class, 'check']);
 
 // Authentication routes
 Route::prefix('auth')->group(function () {
