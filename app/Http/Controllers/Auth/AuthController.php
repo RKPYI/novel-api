@@ -276,39 +276,27 @@ class AuthController extends Controller
 
             return redirect($redirectUrl);
 
-            // return response()->json([
-            //     'message' => 'Google login successful',
-            //     'user' => [
-            //         'id' => $user->id,
-            //         'name' => $user->name,
-            //         'email' => $user->email,
-            //         'role' => $user->role,
-            //         'avatar' => $user->avatar,
-            //         'bio' => $user->bio,
-            //         'is_admin' => $user->isAdmin(),
-            //     ],
-            //     'token' => $token,
-            // ]);
-
         } catch (\Exception $e) {
+            // Log the actual error for debugging
+            \Log::error('Google OAuth failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
+            ]);
+
             // Check if this is a Telescope login request
             $state = $request->get('state');
             if ($state === 'telescope') {
-                return redirect('/telescope/login?error=authentication_failed');
+                return redirect('/telescope/login?error=authentication_failed&message=' . urlencode($e->getMessage()));
             }
 
             $frontendUrl = env('FRONTEND_URL', 'https://rantale.randk.me');
             $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
                 'error' => 'authentication_failed',
-                'message' => 'Google authentication failed'
+                'message' => $e->getMessage()
             ]);
 
             return redirect($redirectUrl);
-
-            // return response()->json([
-            //     'message' => 'Google authentication failed',
-            //     'error' => $e->getMessage()
-            // ], 500);
         }
     }
 
