@@ -259,12 +259,18 @@ class ContactController extends Controller
 
     /**
      * Send notification to all admins about new contact
+     * Excludes the contact submitter if they are also an admin
      */
     private function notifyAdmins(Contact $contact): void
     {
         try {
-            // Get all admin users
-            $admins = User::where('role', 'admin')->get();
+            // Get all admin users, excluding the contact submitter if they're an admin
+            $admins = User::where('role', User::ROLE_ADMIN)
+                ->when($contact->user_id, function ($query) use ($contact) {
+                    // Exclude the contact submitter from admin notifications
+                    $query->where('id', '!=', $contact->user_id);
+                })
+                ->get();
 
             // Send notification to each admin
             foreach ($admins as $admin) {
@@ -291,6 +297,7 @@ class ContactController extends Controller
             Log::info('Admin notifications sent for new contact', [
                 'contact_id' => $contact->id,
                 'admin_count' => $admins->count(),
+                'submitter_excluded' => $contact->user_id !== null,
             ]);
 
         } catch (\Exception $e) {
