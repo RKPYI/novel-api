@@ -203,6 +203,9 @@ class NovelController extends Controller
 
         $novel->delete();
 
+        // Clear related caches using CacheHelper
+        CacheHelper::clearNovelCaches($novel->id, $novel->slug);
+
         return response()->json([
             'message' => 'Novel deleted successfully'
         ], 200);
