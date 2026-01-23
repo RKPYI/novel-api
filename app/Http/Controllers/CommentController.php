@@ -9,6 +9,7 @@ use App\Models\Chapter;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class CommentController extends Controller
 {
@@ -127,7 +128,12 @@ class CommentController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'novel_id' => 'required|exists:novels,id',
-            'chapter_id' => 'nullable|exists:chapters,id',
+            'chapter_id' => [
+                'nullable',
+                Rule::exists('chapters', 'id')->where(function ($query) use ($request) {
+                    return $query->where('novel_id', $request->novel_id);
+                }),
+            ],
             'parent_id' => 'nullable|exists:comments,id',
             'content' => 'required|string|max:1000',
             'is_spoiler' => 'boolean',
