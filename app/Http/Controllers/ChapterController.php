@@ -129,9 +129,10 @@ class ChapterController extends Controller
             ], 404);
         }
 
-        // Increment view count and refresh the model to get updated views
+        // Increment view count silently without updating updated_at
+        $chapter->timestamps = false;
         $chapter->increment('views');
-        $chapter->refresh();
+        $chapter->timestamps = true;
 
         // Cache the navigation data (previous/next chapters) for 1 hour
         $cacheKey = "chapter_nav_{$novel->id}_{$chapterNumber}";

@@ -119,9 +119,12 @@ class NovelController extends Controller
             ], 404);
         }
 
-        // Increment view count and refresh the model to get updated views
-        $novel->views = $novel->views + 1;
-        $novel->save();
+        // Increment views count atomically without updating timestamps
+        $novel->timestamps = false;
+        $novel->increment('views');
+        $novel->timestamps = true;
+
+        $novel->refresh();
 
         return response()->json([
             'message' => 'Novel details',
