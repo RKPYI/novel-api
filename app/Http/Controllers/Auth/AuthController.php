@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Laravel\Socialite\Facades\Socialite;
@@ -137,6 +138,8 @@ class AuthController extends Controller
                 'role' => $user->role,
                 'avatar' => $user->avatar,
                 'bio' => $user->bio,
+                'provider' => $user->provider,
+                'provider_id' => $user->provider_id,
                 'is_admin' => $user->isAdmin(),
                 'last_login_at' => $user->last_login_at,
                 'created_at' => $user->created_at,
@@ -166,6 +169,10 @@ class AuthController extends Controller
 
         $user->update($request->only(['name', 'bio', 'avatar']));
 
+        // Clear user-related caches
+        Cache::forget("user_{$user->id}");
+        Cache::forget("user_profile_{$user->id}");
+
         return response()->json([
             'message' => 'Profile updated successfully',
             'user' => [
@@ -187,13 +194,13 @@ class AuthController extends Controller
     {
         // Check if this is for Telescope access
         $state = $request->get('telescope') === 'true' ? 'telescope' : null;
-        
+
         $driver = Socialite::driver('google')->stateless();
-        
+
         if ($state) {
             $driver->with(['state' => $state]);
         }
-        
+
         $url = $driver->redirect()->getTargetUrl();
 
         return response()->json([
@@ -260,7 +267,7 @@ class AuthController extends Controller
             }
 
             // Regular frontend redirect
-            $frontendUrl = env('FRONTEND_URL', 'https://novel.randk.tech');
+            $frontendUrl = env('FRONTEND_URL', 'https://rantale.randk.me');
             $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
                 'success' => 'true',
                 'token' => $token,
@@ -269,39 +276,27 @@ class AuthController extends Controller
 
             return redirect($redirectUrl);
 
-            // return response()->json([
-            //     'message' => 'Google login successful',
-            //     'user' => [
-            //         'id' => $user->id,
-            //         'name' => $user->name,
-            //         'email' => $user->email,
-            //         'role' => $user->role,
-            //         'avatar' => $user->avatar,
-            //         'bio' => $user->bio,
-            //         'is_admin' => $user->isAdmin(),
-            //     ],
-            //     'token' => $token,
-            // ]);
-
         } catch (\Exception $e) {
+            // Log the actual error for debugging
+            \Log::error('Google OAuth failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
+            ]);
+
             // Check if this is a Telescope login request
             $state = $request->get('state');
             if ($state === 'telescope') {
-                return redirect('/telescope/login?error=authentication_failed');
+                return redirect('/telescope/login?error=authentication_failed&message=' . urlencode($e->getMessage()));
             }
 
-            $frontendUrl = env('FRONTEND_URL', 'https://novel.randk.tech');
+            $frontendUrl = env('FRONTEND_URL', 'https://rantale.randk.me');
             $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
                 'error' => 'authentication_failed',
-                'message' => 'Google authentication failed'
+                'message' => $e->getMessage()
             ]);
 
             return redirect($redirectUrl);
-
-            // return response()->json([
-            //     'message' => 'Google authentication failed',
-            //     'error' => $e->getMessage()
-            // ], 500);
         }
     }
 
@@ -369,41 +364,31 @@ class AuthController extends Controller
     /**
      * Verify user email
      */
-    public function verifyEmail(Request $request, $id, $hash): JsonResponse
+    public function verifyEmail(Request $request, $id, $hash)
     {
         $user = User::find($id);
 
+        $frontendUrl = env('FRONTEND_URL', 'http://localhost:3000');
+
         if (!$user) {
-            return response()->json([
-                'message' => 'Invalid verification link'
-            ], 400);
+            // Redirect to frontend with error
+            return redirect($frontendUrl . '/verify-email?status=error&message=Invalid verification link');
         }
 
         if (!hash_equals((string) $hash, sha1($user->email))) {
-            return response()->json([
-                'message' => 'Invalid verification link'
-            ], 400);
+            // Redirect to frontend with error
+            return redirect($frontendUrl . '/verify-email?status=error&message=Invalid verification link');
         }
 
         if ($user->hasVerifiedEmail()) {
-            return response()->json([
-                'message' => 'Email is already verified'
-            ], 400);
+            // Redirect to frontend - already verified
+            return redirect($frontendUrl . '/verify-email?status=already_verified&message=Email is already verified');
         }
 
         $user->markEmailAsVerified();
 
-        return response()->json([
-            'message' => 'Email verified successfully',
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'email_verified_at' => $user->email_verified_at,
-                'email_verified' => $user->hasVerifiedEmail(),
-                'role' => $user->role,
-            ]
-        ]);
+        // Redirect to frontend with success
+        return redirect($frontendUrl . '/verify-email?status=success&message=Email verified successfully');
     }
 
     /**

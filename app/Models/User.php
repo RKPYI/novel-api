@@ -236,4 +236,28 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         $this->notify(new \App\Notifications\VerifyEmailNotification);
     }
+
+    /**
+     * Get the avatar attribute.
+     * Automatically converts local storage paths to full URLs.
+     */
+    public function getAvatarAttribute($value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+
+        // If it's already a full URL (e.g., Google avatar), return as-is
+        if (filter_var($value, FILTER_VALIDATE_URL)) {
+            return $value;
+        }
+
+        // If it's a local storage path, convert to full URL
+        if (str_starts_with($value, '/storage/')) {
+            return url($value);
+        }
+
+        // Fallback: assume it's a storage path without /storage/ prefix
+        return url('/storage/' . $value);
+    }
 }

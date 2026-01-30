@@ -19,17 +19,17 @@ return [
 
     'allowed_methods' => ['*'],
 
-    // 'allowed_origins' => ['https://randk.tech', 'https://www.randk.tech', 'https://*.randk.tech','http://localhost:3000', 'http://localhost:3001'],
-    'allowed_origins' => ['*'],
+    'allowed_origins' => ['https://rantale.randk.me', 'http://localhost:3000', 'http://localhost:3001'],
+    // 'allowed_origins' => ['*'],
 
     'allowed_origins_patterns' => [],
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    'exposed_headers' => ['*'],
 
-    'max_age' => 0,
+    'max_age' => 86400,
 
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 
 ];

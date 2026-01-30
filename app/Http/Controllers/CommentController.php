@@ -9,6 +9,7 @@ use App\Models\Chapter;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class CommentController extends Controller
 {
@@ -21,9 +22,17 @@ class CommentController extends Controller
             ->where('is_approved', true);
 
         if ($chapterNumber) {
-            $chapter = Chapter::where('novel_id', $novel->id)
-                ->where('id', $chapterNumber) // Changed 'chapter_number' to 'id'
-                ->firstOrFail();
+            // Find chapter by chapter_number within this novel
+            $chapter = Chapter::where('chapter_number', $chapterNumber)
+                ->where('novel_id', $novel->id)
+                ->first();
+
+            if (!$chapter) {
+                return response()->json([
+                    'message' => "Chapter {$chapterNumber} not found in novel '{$novel->title}'"
+                ], 404);
+            }
+
             $baseQuery->where('chapter_id', $chapter->id);
         } else {
             $baseQuery->whereNull('chapter_id'); // Novel comments only
@@ -34,18 +43,15 @@ class CommentController extends Controller
 
         // Get paginated top-level comments
         $topLevelCommentsQuery = (clone $baseQuery)
-            ->with(['user:id,name,avatar,role,email_verified_at', 'replies.user:id,name,avatar,role,email_verified_at', 'replies.replies'])
+            ->with([
+                'user:id,name,avatar,role,email_verified_at',
+                'replies.user:id,name,avatar,role,email_verified_at',
+                'replies.replies.user:id,name,avatar,role,email_verified_at'
+            ])
             ->whereNull('parent_id')
             ->orderBy('created_at', 'desc');
 
         $comments = $topLevelCommentsQuery->paginate(20);
-
-        // To ensure replies also have their user data and potentially nested replies loaded
-        // This can be resource-intensive if replies are very deep.
-        // Consider if 'replies.user:id,name,avatar' is sufficient or if deeper nesting is needed.
-        // The current 'replies.user:id,name,avatar' loads user for direct replies.
-        // If you need user for replies of replies, you'd do 'replies.replies.user:id,name,avatar', etc.
-        // For now, assuming 'replies.user:id,name,avatar' is what's primarily used by frontend for replies.
 
         return response()->json([
             'comments' => $comments,
@@ -122,7 +128,12 @@ class CommentController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'novel_id' => 'required|exists:novels,id',
-            'chapter_id' => 'nullable|exists:chapters,id',
+            'chapter_id' => [
+                'nullable',
+                Rule::exists('chapters', 'id')->where(function ($query) use ($request) {
+                    return $query->where('novel_id', $request->novel_id);
+                }),
+            ],
             'parent_id' => 'nullable|exists:comments,id',
             'content' => 'required|string|max:1000',
             'is_spoiler' => 'boolean',

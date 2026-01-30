@@ -73,6 +73,7 @@ class ReadingProgressController extends Controller
         // Find the chapter by novel and chapter number
         $chapter = Chapter::where('novel_id', $novel->id)
             ->where('chapter_number', $chapterNumber)
+            ->select('id', 'novel_id', 'chapter_number', 'title')
             ->first();
 
         if (!$chapter) {
@@ -84,7 +85,7 @@ class ReadingProgressController extends Controller
         // Get current progress to check if we should update
         $currentProgress = ReadingProgress::where('user_id', $userId)
             ->where('novel_id', $novel->id)
-            ->with(['chapter'])
+            ->with(['chapter:id,novel_id,chapter_number,title'])
             ->first();
 
         $shouldUpdateProgress = false;
@@ -117,6 +118,11 @@ class ReadingProgressController extends Controller
                     'updated_at' => now()
                 ]
             );
+
+            // Reload chapter with specific columns to avoid loading content
+            $progress->load(['chapter' => function ($query) {
+                $query->select('id', 'novel_id', 'chapter_number', 'title');
+            }]);
         } else {
             // Keep existing progress but refresh the object
             $progress = $currentProgress;
@@ -241,6 +247,7 @@ class ReadingProgressController extends Controller
         // Get the first chapter of the novel
         $firstChapter = Chapter::where('novel_id', $novel->id)
             ->orderBy('chapter_number', 'asc')
+            ->select('id', 'novel_id', 'chapter_number', 'title')
             ->first();
 
         if (!$firstChapter) {

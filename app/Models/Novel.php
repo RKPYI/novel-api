@@ -3,6 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use App\Helpers\CacheHelper;
 
 class Novel extends Model
 {
@@ -31,7 +34,7 @@ class Novel extends Model
 
     public function genres()
     {
-        return $this->belongsToMany(Genre::class);
+        return $this->belongsToMany(Genre::class, 'genre_novel');
     }
 
     public function readingProgress()
@@ -145,11 +148,49 @@ class Novel extends Model
                 $novel->slug = $novel->generateSlug();
             }
         });
+
+        // Smart cache invalidation on save
+        static::saved(function ($novel) {
+            // Only clear cache if significant fields were changed (not just view count)
+            // This prevents cache clearing on every novel view
+            if ($novel->wasChanged() && !$novel->wasChanged(['views'])) {
+                CacheHelper::clearNovelCaches($novel->id, $novel->slug);
+            }
+        });
+
+        // Clear caches on delete
+        static::deleted(function ($novel) {
+            CacheHelper::clearNovelCaches($novel->id, $novel->slug);
+        });
     }
 
     // Route key name for route model binding
     public function getRouteKeyName()
     {
         return 'slug';
+    }
+
+    /**
+     * Get the cover_image attribute.
+     * Automatically converts local storage paths to full URLs.
+     */
+    public function getCoverImageAttribute($value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+
+        // If it's already a full URL (e.g., external CDN), return as-is
+        if (filter_var($value, FILTER_VALIDATE_URL)) {
+            return $value;
+        }
+
+        // If it's a local storage path, convert to full URL
+        if (str_starts_with($value, '/storage/')) {
+            return url($value);
+        }
+
+        // Fallback: assume it's a storage path without /storage/ prefix
+        return url('/storage/' . $value);
     }
 }

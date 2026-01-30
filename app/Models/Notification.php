@@ -29,6 +29,8 @@ class Notification extends Model
     const TYPE_AUTHOR_STATUS = 'author_status';
     const TYPE_NOVEL_UPDATE = 'novel_update';
     const TYPE_SYSTEM = 'system';
+    const TYPE_NEW_CONTACT = 'new_contact';
+    const TYPE_CONTACT_RESPONSE = 'contact_response';
 
     /**
      * Get the user that owns this notification

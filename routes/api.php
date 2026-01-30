@@ -6,13 +6,21 @@ use App\Http\Controllers\AuthorApplicationController;
 use App\Http\Controllers\AuthorController;
 use App\Http\Controllers\ChapterController;
 use App\Http\Controllers\CommentController;
+use App\Http\Controllers\ContactController;
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\NovelController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RatingController;
 use App\Http\Controllers\ReadingProgressController;
+use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserLibraryController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\DB;
+
+// Public health check endpoint - no authentication required
+// Used by monitoring systems and can work even if database is down
+Route::get('health', [HealthController::class, 'check']);
 
 // Authentication routes
 Route::prefix('auth')->group(function () {
@@ -24,7 +32,7 @@ Route::prefix('auth')->group(function () {
 
 // Email verification routes
 Route::prefix('auth')->group(function () {
-    Route::post('email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');
+    Route::get('email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');
 });
 
 // Protected auth routes
@@ -37,9 +45,14 @@ Route::prefix('auth')->middleware(['auth:sanctum'])->group(function () {
     Route::post('email/resend-verification', [AuthController::class, 'resendEmailVerification']);
 });
 
-Route::get('/user', function (Request $request) {
-    return $request->user();
-})->middleware(['auth:sanctum']);
+// User profile routes
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('user/profile/stats', [UserController::class, 'getProfileStats']);
+
+    // User avatar upload
+    Route::post('user/avatar', [UserController::class, 'uploadAvatar']);
+    Route::delete('user/avatar', [UserController::class, 'deleteAvatar']);
+});
 
 // Author application routes
 Route::middleware(['auth:sanctum'])->group(function () {
@@ -81,9 +94,11 @@ Route::get('novels/search', [NovelController::class, 'search']);
 // Novel routes - read operations
 Route::get('novels/popular', [NovelController::class, 'popular']);
 Route::get('novels/latest', [NovelController::class, 'latest']);
+Route::get('novels/recently-updated', [NovelController::class, 'recentlyUpdated']);
 Route::get('novels/recommendations', [NovelController::class, 'recommendations']);
 Route::get('novels/genres', [NovelController::class, 'genres']);
 Route::get('novels', [NovelController::class, 'index']);
+Route::get('novels/{slug}/related', [NovelController::class, 'related']);
 Route::get('novels/{slug}', [NovelController::class, 'show']);
 
 // Author+ novel routes (author, moderator, admin can create/edit)
@@ -91,6 +106,11 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
     Route::post('novels', [NovelController::class, 'store']);
     Route::put('novels/{slug}', [NovelController::class, 'update']);
     Route::delete('novels/{slug}', [NovelController::class, 'destroy']);
+    Route::post('novels/bulk-delete', [NovelController::class, 'bulkDestroy']);
+
+    // Novel cover image upload
+    Route::post('novels/{slug}/cover', [NovelController::class, 'uploadCover']);
+    Route::delete('novels/{slug}/cover', [NovelController::class, 'deleteCover']);
 });
 
 // Chapter routes - read operations
@@ -102,6 +122,7 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
     Route::post('novels/{novel:slug}/chapters', [ChapterController::class, 'store']);
     Route::put('novels/{novel:slug}/chapters/{chapter}', [ChapterController::class, 'update']);
     Route::delete('novels/{novel:slug}/chapters/{chapter}', [ChapterController::class, 'destroy']);
+    Route::post('novels/{novel:slug}/chapters/bulk-delete', [ChapterController::class, 'bulkDestroy']);
 });
 
 // Comment routes - read operations
@@ -165,9 +186,27 @@ Route::middleware(['auth:sanctum'])->group(function () {
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('notifications', [NotificationController::class, 'index']);
     Route::get('notifications/unread-count', [NotificationController::class, 'getUnreadCount']);
+    Route::put('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+    Route::delete('notifications/clear-read', [NotificationController::class, 'clearRead']);
     Route::put('notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::put('notifications/{notification}/unread', [NotificationController::class, 'markAsUnread']);
-    Route::put('notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
     Route::delete('notifications/{notification}', [NotificationController::class, 'destroy']);
-    Route::delete('notifications/clear-read', [NotificationController::class, 'clearRead']);
+});
+
+// Contact routes - public route for submitting contact form
+Route::post('contact', [ContactController::class, 'store']);
+
+// Contact routes - authenticated users can view their own contacts
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('my-contacts', [ContactController::class, 'myContacts']);
+    Route::get('my-contacts/{contact}', [ContactController::class, 'showMyContact']);
+});
+
+// Contact routes - admin only
+Route::middleware(['auth:sanctum', 'admin'])->group(function () {
+    Route::get('admin/contacts', [ContactController::class, 'index']);
+    Route::get('admin/contacts/{contact}', [ContactController::class, 'show']);
+    Route::put('admin/contacts/{contact}/status', [ContactController::class, 'updateStatus']);
+    Route::post('admin/contacts/{contact}/respond', [ContactController::class, 'respond']);
+    Route::delete('admin/contacts/{contact}', [ContactController::class, 'destroy']);
 });
