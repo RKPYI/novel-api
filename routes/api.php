@@ -111,6 +111,11 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
     // Novel cover image upload
     Route::post('novels/{slug}/cover', [NovelController::class, 'uploadCover']);
     Route::delete('novels/{slug}/cover', [NovelController::class, 'deleteCover']);
+
+    // Novel asset uploads
+    Route::get('novels/{slug}/assets', [NovelController::class, 'listAssets']);
+    Route::post('novels/{slug}/assets', [NovelController::class, 'uploadAsset']);
+    Route::delete('novels/{slug}/assets/{asset}', [NovelController::class, 'deleteAsset']);
 });
 
 // Chapter routes - read operations
