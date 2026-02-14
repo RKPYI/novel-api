@@ -19,20 +19,20 @@ class FixChapterCounts extends Command
      *
      * @var string
      */
-    protected $description = 'Fix total_chapters count for all novels by recalculating from actual chapters';
+    protected $description = 'Fix total_chapters count for all novels by recalculating from actual published chapters';
 
     /**
      * Execute the console command.
      */
     public function handle()
     {
-        $this->info('Fixing chapter counts for all novels...');
+        $this->info('Fixing chapter counts for all novels (counting only published chapters)...');
 
         $novels = Novel::all();
         $fixed = 0;
 
         foreach ($novels as $novel) {
-            $actualCount = $novel->chapters()->count();
+            $actualCount = $novel->publishedChapters()->count();
             $currentCount = $novel->total_chapters ?? 0;
 
             if ($actualCount !== $currentCount) {
@@ -40,7 +40,7 @@ class FixChapterCounts extends Command
                 $novel->save();
                 $fixed++;
 
-                $this->line("Novel '{$novel->title}': {$currentCount} → {$actualCount} chapters");
+                $this->line("Novel '{$novel->title}': {$currentCount} → {$actualCount} published chapters");
             }
         }
 

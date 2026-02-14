@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Novel;
 use App\Models\Genre;
+use App\Models\Chapter;
 use App\Models\ReadingProgress;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -110,7 +111,11 @@ class NovelController extends Controller
         // Don't cache the show endpoint since views are incremented on every request
         // and need to be real-time for low-traffic novels
         $novel = Novel::with(['genres', 'chapters' => function($query) {
-            $query->select('id', 'novel_id', 'chapter_number', 'title', 'word_count')->orderBy('chapter_number');
+            // Only show published (approved) chapters to public
+            $query->select('id', 'novel_id', 'chapter_number', 'title', 'word_count')
+                ->whereIn('status', [Chapter::STATUS_APPROVED, Chapter::STATUS_PENDING_UPDATE])
+                ->whereNotNull('published_at')
+                ->orderBy('chapter_number');
         }])->where('slug', $slug)->first();
 
         if (!$novel) {
@@ -124,7 +129,8 @@ class NovelController extends Controller
         $novel->increment('views');
         $novel->timestamps = true;
 
-        $novel->refresh();
+        // Refresh only the views count without reloading relationships
+        $novel->views = $novel->fresh()->views;
 
         return response()->json([
             'message' => 'Novel details',

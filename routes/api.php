@@ -7,6 +7,7 @@ use App\Http\Controllers\AuthorController;
 use App\Http\Controllers\ChapterController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\EditorController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\NovelController;
 use App\Http\Controllers\NotificationController;
@@ -66,6 +67,19 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
     Route::get('author/novels', [AuthorController::class, 'getNovels']);
 });
 
+// Editor routes - chapter review workflow
+Route::middleware(['auth:sanctum', 'editor'])->group(function () {
+    Route::get('editor/stats', [EditorController::class, 'getStats']);
+    Route::get('editor/pending-chapters', [EditorController::class, 'getPendingChapters']);
+    Route::get('editor/my-claimed-chapters', [EditorController::class, 'getMyClaimedChapters']);
+    Route::post('editor/chapters/{chapter}/claim', [EditorController::class, 'claimChapter']);
+    Route::post('editor/chapters/{chapter}/unclaim', [EditorController::class, 'unclaimChapter']);
+    Route::get('editor/chapters/{chapter}', [EditorController::class, 'showChapter']);
+    Route::post('editor/chapters/{chapter}/approve', [EditorController::class, 'approveChapter']);
+    Route::post('editor/chapters/{chapter}/request-revision', [EditorController::class, 'requestRevision']);
+    Route::get('editor/review-history', [EditorController::class, 'getReviewHistory']);
+});
+
 // Admin routes
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     // Admin dashboard and system management
@@ -101,7 +115,7 @@ Route::get('novels', [NovelController::class, 'index']);
 Route::get('novels/{slug}/related', [NovelController::class, 'related']);
 Route::get('novels/{slug}', [NovelController::class, 'show']);
 
-// Author+ novel routes (author, moderator, admin can create/edit)
+// Author+ novel routes (author or admin can create/edit)
 Route::middleware(['auth:sanctum', 'author'])->group(function () {
     Route::post('novels', [NovelController::class, 'store']);
     Route::put('novels/{slug}', [NovelController::class, 'update']);
@@ -113,16 +127,26 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
     Route::delete('novels/{slug}/cover', [NovelController::class, 'deleteCover']);
 });
 
-// Chapter routes - read operations
+// Chapter routes - read operations (public, only published chapters)
 Route::get('novels/{novel:slug}/chapters', [ChapterController::class, 'index']);
 Route::get('novels/{novel:slug}/chapters/{chapterNumber}', [ChapterController::class, 'show']);
 
-// Chapter routes - author operations
+// Chapter routes - author operations (create/edit/delete and manage workflow)
 Route::middleware(['auth:sanctum', 'author'])->group(function () {
+    // Author's view of all chapters (including unpublished)
+    Route::get('author/novels/{novel:slug}/chapters', [ChapterController::class, 'authorIndex']);
+
+    // Author's view of a specific chapter by chapter number (including unpublished)
+    Route::get('author/novels/{novel:slug}/chapters/{chapterNumber}', [ChapterController::class, 'authorShow']);
+
+    // Chapter CRUD
     Route::post('novels/{novel:slug}/chapters', [ChapterController::class, 'store']);
     Route::put('novels/{novel:slug}/chapters/{chapter}', [ChapterController::class, 'update']);
     Route::delete('novels/{novel:slug}/chapters/{chapter}', [ChapterController::class, 'destroy']);
     Route::post('novels/{novel:slug}/chapters/bulk-delete', [ChapterController::class, 'bulkDestroy']);
+
+    // Submit chapter for review (after revision)
+    Route::post('novels/{novel:slug}/chapters/{chapter}/submit-for-review', [ChapterController::class, 'submitForReview']);
 });
 
 // Comment routes - read operations
