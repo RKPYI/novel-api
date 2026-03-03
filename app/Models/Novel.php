@@ -58,14 +58,6 @@ class Novel extends Model
     }
 
     /**
-     * Get assets uploaded for this novel
-     */
-    public function assets()
-    {
-        return $this->hasMany(NovelAsset::class);
-    }
-
-    /**
      * Get users who have this novel in their library
      */
     public function libraryEntries()
