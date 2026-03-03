@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Chapter;
 use App\Models\Novel;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -17,7 +18,7 @@ class AuthorController extends Controller
     {
         $user = $request->user();
 
-        // Ensure user can create novels (author, moderator, or admin)
+        // Ensure user can create novels (author or admin)
         if (!$user->canCreateNovels()) {
             return response()->json([
                 'message' => 'Unauthorized. Author privileges required.'
@@ -125,6 +126,20 @@ class AuthorController extends Controller
                 'rating_count' => (int) $topNovel->rating_count,
                 'comments' => (int) $topNovel->comments_count,
             ] : null,
+            'chapter_workflow' => [
+                'pending_review' => Chapter::whereIn('novel_id', $novelIds)
+                    ->where('status', Chapter::STATUS_PENDING_REVIEW)
+                    ->count(),
+                'revision_requested' => Chapter::whereIn('novel_id', $novelIds)
+                    ->where('status', Chapter::STATUS_REVISION_REQUESTED)
+                    ->count(),
+                'approved' => Chapter::whereIn('novel_id', $novelIds)
+                    ->where('status', Chapter::STATUS_APPROVED)
+                    ->count(),
+                'draft' => Chapter::whereIn('novel_id', $novelIds)
+                    ->where('status', Chapter::STATUS_DRAFT)
+                    ->count(),
+            ],
         ]);
     }
 
@@ -135,7 +150,7 @@ class AuthorController extends Controller
     {
         $user = $request->user();
 
-        // Ensure user can create novels (author, moderator, or admin)
+        // Ensure user can create novels (author or admin)
         if (!$user->canCreateNovels()) {
             return response()->json([
                 'message' => 'Unauthorized. Author privileges required.'

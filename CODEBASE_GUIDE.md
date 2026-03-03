@@ -36,17 +36,35 @@
 
 - `ROLE_USER = 0`
 - `ROLE_AUTHOR = 1`
-- `ROLE_MODERATOR = 2`
+- `ROLE_EDITOR = 2`
 - `ROLE_ADMIN = 3`
 
 Helper methods:
 - `isAdmin()`
-- `canCreateNovels()` (author/moderator/admin)
+- `isAuthor()`
+- `isEditor()`
+- `canCreateNovels()` (author/admin only)
+- `canReviewChapters()` (editor/admin)
 
 Middleware:
-- `author` => requires `canCreateNovels()`
+- `author` => requires `canCreateNovels()` (author or admin)
+- `editor` => requires `canReviewChapters()` (editor or admin)
 - `admin` => requires `isAdmin()`
 - `verified` => requires `hasVerifiedEmail()`
+
+### Editorial Workflow
+
+Chapters go through an approval workflow:
+1. Author creates chapter → status: `pending_review`
+2. Editor reviews → status: `approved` (published) or `revision_requested`
+3. If revision requested, author fixes and resubmits → back to `pending_review`
+4. Admin can bypass workflow and publish directly
+
+Chapter statuses:
+- `draft` - Not yet submitted
+- `pending_review` - Awaiting editor review
+- `approved` - Published and visible to public
+- `revision_requested` - Needs author revision
 
 ---
 

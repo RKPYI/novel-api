@@ -6,7 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-class AuthorMiddleware
+class EditorMiddleware
 {
     /**
      * Handle an incoming request.
@@ -23,13 +23,13 @@ class AuthorMiddleware
             ], 401);
         }
 
-        // Check if user can create novels (author or admin only)
-        if (!$request->user()->canCreateNovels()) {
+        // Check if user can review chapters (editor or admin)
+        if (!$request->user()->canReviewChapters()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Author privileges required. Please apply for author status.',
+                'message' => 'Editor privileges required',
                 'current_role' => $request->user()->role,
-                'required_roles' => ['author', 'admin']
+                'required_roles' => ['editor', 'admin']
             ], 403);
         }
 

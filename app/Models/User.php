@@ -67,7 +67,7 @@ class User extends Authenticatable implements MustVerifyEmail
     // User roles
     const ROLE_USER = 0;
     const ROLE_AUTHOR = 1;
-    const ROLE_MODERATOR = 2;
+    const ROLE_EDITOR = 2;
     const ROLE_ADMIN = 3;
 
     /**
@@ -79,11 +79,11 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
-     * Check if user can create novels
+     * Check if user can create novels (author or admin only)
      */
     public function canCreateNovels(): bool
     {
-        return in_array($this->role, [self::ROLE_AUTHOR, self::ROLE_MODERATOR, self::ROLE_ADMIN]);
+        return in_array($this->role, [self::ROLE_AUTHOR, self::ROLE_ADMIN]);
     }
 
     /**
@@ -95,19 +95,19 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
-     * Check if user is a moderator
+     * Check if user is an editor
      */
-    public function isModerator(): bool
+    public function isEditor(): bool
     {
-        return $this->role === self::ROLE_MODERATOR;
+        return $this->role === self::ROLE_EDITOR;
     }
 
     /**
-     * Check if user can moderate content
+     * Check if user can review chapters (editor or admin)
      */
-    public function canModerate(): bool
+    public function canReviewChapters(): bool
     {
-        return in_array($this->role, [self::ROLE_MODERATOR, self::ROLE_ADMIN]);
+        return in_array($this->role, [self::ROLE_EDITOR, self::ROLE_ADMIN]);
     }
 
     /**

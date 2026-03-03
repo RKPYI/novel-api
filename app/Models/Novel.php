@@ -27,6 +27,18 @@ class Novel extends Model
         return $this->hasMany(Chapter::class)->orderBy('chapter_number');
     }
 
+    /**
+     * Get only published (approved) chapters
+     * Includes approved and pending_update (still visible to readers)
+     */
+    public function publishedChapters()
+    {
+        return $this->hasMany(Chapter::class)
+            ->whereIn('status', [Chapter::STATUS_APPROVED, Chapter::STATUS_PENDING_UPDATE])
+            ->whereNotNull('published_at')
+            ->orderBy('chapter_number');
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);
@@ -86,10 +98,11 @@ class Novel extends Model
 
     /**
      * Recalculate and update total chapters count
+     * Only counts published (approved) chapters for public visibility
      */
     public function updateChapterCount()
     {
-        $this->total_chapters = $this->chapters()->count();
+        $this->total_chapters = $this->publishedChapters()->count();
         $this->save();
     }
 
