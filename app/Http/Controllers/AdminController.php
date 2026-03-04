@@ -36,7 +36,7 @@ class AdminController extends Controller
                 'by_role' => [
                     'users' => User::where('role', User::ROLE_USER)->count(),
                     'authors' => User::where('role', User::ROLE_AUTHOR)->count(),
-                    'moderators' => User::where('role', User::ROLE_MODERATOR)->count(),
+                    'editors' => User::where('role', User::ROLE_EDITOR)->count(),
                     'admins' => User::where('role', User::ROLE_ADMIN)->count(),
                 ]
             ],
@@ -199,7 +199,7 @@ class AdminController extends Controller
      */
     public function getModerationQueue(Request $request): JsonResponse
     {
-        if (!$request->user()->canModerate()) {
+        if (!$request->user()->canReviewChapters()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -333,7 +333,7 @@ class AdminController extends Controller
 
                             // Check if ERROR message contains critical patterns
                             $isCriticalError = in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY']);
-                            
+
                             if (!$isCriticalError && $currentLevel === 'ERROR') {
                                 foreach ($criticalPatterns as $pattern) {
                                     if (preg_match('/' . $pattern . '/i', $currentError)) {
@@ -368,7 +368,7 @@ class AdminController extends Controller
                         if (strpos($currentTimestamp, $today) !== false) {
                             if (in_array($currentLevel, ['ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY'])) {
                                 $countToday++;
-                                
+
                                 // Also check if ERROR contains critical patterns for counting
                                 $isCritical = in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY']);
                                 if (!$isCritical && $currentLevel === 'ERROR') {
@@ -379,7 +379,7 @@ class AdminController extends Controller
                                         }
                                     }
                                 }
-                                
+
                                 if ($isCritical) {
                                     $criticalErrors++;
                                 }
@@ -402,7 +402,7 @@ class AdminController extends Controller
 
                     // Check if ERROR message contains critical patterns
                     $isCriticalError = in_array($currentLevel, ['CRITICAL', 'ALERT', 'EMERGENCY']);
-                    
+
                     if (!$isCriticalError && $currentLevel === 'ERROR') {
                         foreach ($criticalPatterns as $pattern) {
                             if (preg_match('/' . $pattern . '/i', $currentError)) {
