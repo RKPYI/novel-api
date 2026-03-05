@@ -44,7 +44,7 @@ class CommentController extends Controller
         // Get paginated top-level comments
         $topLevelCommentsQuery = (clone $baseQuery)
             ->with([
-                'user:id,name,avatar,role,email_verified_at',
+                'user:id,name,username,avatar,role,email_verified_at',
                 'replies.user:id,name,avatar,role,email_verified_at',
                 'replies.replies.user:id,name,avatar,role,email_verified_at'
             ])

@@ -46,7 +46,8 @@ class UserController extends Controller
 
         return response()->json([
             'user_id' => $user->id,
-            'username' => $user->name,
+            'name' => $user->name,
+            'username' => $user->username,
             'member_since' => $user->created_at->format('Y-m-d'),
             'reading_progress' => $readingProgressStats,
             'library' => $libraryStats,

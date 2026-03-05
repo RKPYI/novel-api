@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Chapter;
 use App\Models\ChapterReview;
+use App\Models\EditorialGroup;
+use App\Models\EditorialGroupMember;
 use App\Models\Notification;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -406,6 +409,80 @@ class EditorController extends Controller
         return response()->json([
             'message' => 'Revision requested successfully',
             'chapter' => $chapter->fresh(['novel:id,title,slug', 'reviewer:id,name', 'latestReview'])
+        ]);
+    }
+
+    /**
+     * Get the editorial group this editor belongs to,
+     * including its members and pending chapter count.
+     */
+    public function getGroupInfo(Request $request): JsonResponse
+    {
+        $editor = $request->user();
+
+        // Find the editor's membership
+        $membership = EditorialGroupMember::where('user_id', $editor->id)
+            ->where('role', 'editor')
+            ->first();
+
+        if (!$membership) {
+            return response()->json([
+                'message' => 'You are not assigned to any editorial group.',
+                'group'   => null,
+            ]);
+        }
+
+        $group = EditorialGroup::with(['members.user:id,name,username,email,role'])
+            ->find($membership->editorial_group_id);
+
+        if (!$group) {
+            return response()->json([
+                'message' => 'Editorial group not found.',
+                'group'   => null,
+            ], 404);
+        }
+
+        // Get author user IDs in this group
+        $authorUserIds = $group->members
+            ->where('role', 'author')
+            ->pluck('user_id')
+            ->toArray();
+
+        // Count pending chapters from those authors
+        $pendingFromGroup = 0;
+        if (!empty($authorUserIds)) {
+            $pendingFromGroup = Chapter::whereHas('novel', function ($q) use ($authorUserIds) {
+                    $q->whereIn('user_id', $authorUserIds);
+                })
+                ->whereIn('status', [Chapter::STATUS_PENDING_REVIEW, Chapter::STATUS_PENDING_UPDATE])
+                ->count();
+        }
+
+        // Format members
+        $members = $group->members->map(function ($m) {
+            return [
+                'id'        => $m->user->id,
+                'name'      => $m->user->name,
+                'username'  => $m->user->username,
+                'email'     => $m->user->email,
+                'user_role' => $m->user->role,
+                'group_role' => $m->role,
+                'joined_at' => $m->created_at?->toISOString(),
+            ];
+        });
+
+        return response()->json([
+            'message' => 'Group info retrieved successfully',
+            'group'   => [
+                'id'          => $group->id,
+                'name'        => $group->name,
+                'tag'         => $group->tag,
+                'description' => $group->description,
+                'created_at'  => $group->created_at?->toISOString(),
+                'member_count' => $group->members->count(),
+                'pending_chapters_from_group' => $pendingFromGroup,
+                'members'     => $members,
+            ],
         ]);
     }
 

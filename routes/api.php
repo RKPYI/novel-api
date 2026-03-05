@@ -71,6 +71,7 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
 // Editor routes - chapter review workflow
 Route::middleware(['auth:sanctum', 'editor'])->group(function () {
     Route::get('editor/stats', [EditorController::class, 'getStats']);
+    Route::get('editor/group', [EditorController::class, 'getGroupInfo']);
     Route::get('editor/pending-chapters', [EditorController::class, 'getPendingChapters']);
     Route::get('editor/my-claimed-chapters', [EditorController::class, 'getMyClaimedChapters']);
     Route::post('editor/chapters/{chapter}/claim', [EditorController::class, 'claimChapter']);
@@ -247,10 +248,3 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     Route::delete('admin/editorial-groups/{editorial_group}/members/{username}', [EditorialGroupController::class, 'removeMember']);
 });
 
-// Editor routes - chapter review operations
-Route::middleware(['auth:sanctum', 'editor'])->group(function () {
-    Route::get('editor/reviews', [EditorController::class, 'pendingReviews']);
-    Route::post('editor/reviews/{chapter}', [EditorController::class, 'reviewChapter']);
-    Route::get('editor/reviews/history', [EditorController::class, 'reviewHistory']);
-    Route::get('editor/group', [EditorController::class, 'groupInfo']);
-});
