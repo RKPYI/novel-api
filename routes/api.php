@@ -8,6 +8,7 @@ use App\Http\Controllers\ChapterController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\EditorialGroupController;
+use App\Http\Controllers\GenreController;
 use App\Http\Controllers\EditorController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\NovelController;
@@ -95,6 +96,13 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 
     // Content moderation
     Route::get('admin/moderation', [AdminController::class, 'getModerationQueue']);
+
+    // Genre management
+    Route::get('admin/genres', [GenreController::class, 'index']);
+    Route::post('admin/genres', [GenreController::class, 'store']);
+    Route::get('admin/genres/{genre}', [GenreController::class, 'show']);
+    Route::put('admin/genres/{genre}', [GenreController::class, 'update']);
+    Route::delete('admin/genres/{genre}', [GenreController::class, 'destroy']);
 
     // Author applications
     Route::get('admin/author-applications', [AuthorApplicationController::class, 'adminIndex']);
