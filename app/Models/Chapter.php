@@ -35,6 +35,14 @@ class Chapter extends Model
         return $this->belongsTo(Novel::class);
     }
 
+    /**
+     * Get the editor who reviewed this chapter.
+     */
+    public function reviewer()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
     public function readingProgress()
     {
         return $this->hasMany(ReadingProgress::class);
@@ -50,13 +58,6 @@ class Chapter extends Model
         return $this->hasMany(Comment::class);
     }
 
-    /**
-     * Get the editor who reviewed this chapter
-     */
-    public function reviewer()
-    {
-        return $this->belongsTo(User::class, 'reviewed_by');
-    }
 
     /**
      * Get the editor who claimed this chapter for review

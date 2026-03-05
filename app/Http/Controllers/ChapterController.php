@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Chapter;
 use App\Models\Novel;
+use App\Models\EditorialGroupMember;
 use Illuminate\Http\Request;
 use App\Helpers\CacheHelper;
 
@@ -309,6 +310,16 @@ class ChapterController extends Controller
             return response()->json([
                 'message' => 'Chapter not found'
             ], 404);
+        }
+
+        // Non-approved chapters are only visible to the novel owner and admins
+        if ($chapter->review_status !== 'approved') {
+            $currentUser = request()->user();
+            if (!$currentUser || ($novel->user_id !== $currentUser->id && !$currentUser->isAdmin())) {
+                return response()->json([
+                    'message' => 'Chapter not found'
+                ], 404);
+            }
         }
 
         // Increment view count silently without updating updated_at

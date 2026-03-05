@@ -51,6 +51,7 @@ class AuthController extends Controller
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
+                'username' => $user->username,
                 'email' => $user->email,
                 'email_verified_at' => $user->email_verified_at,
                 'email_verified' => $user->hasVerifiedEmail(),
@@ -97,6 +98,7 @@ class AuthController extends Controller
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
+                'username' => $user->username,
                 'email' => $user->email,
                 'email_verified_at' => $user->email_verified_at,
                 'email_verified' => $user->hasVerifiedEmail(),
@@ -132,6 +134,7 @@ class AuthController extends Controller
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
+                'username' => $user->username,
                 'email' => $user->email,
                 'email_verified_at' => $user->email_verified_at,
                 'email_verified' => $user->hasVerifiedEmail(),
@@ -178,6 +181,7 @@ class AuthController extends Controller
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
+                'username' => $user->username,
                 'email' => $user->email,
                 'role' => $user->role,
                 'avatar' => $user->avatar,
@@ -247,6 +251,7 @@ class AuthController extends Controller
             $userData = [
                 'id' => $user->id,
                 'name' => $user->name,
+                'username' => $user->username,
                 'email' => $user->email,
                 'role' => $user->role,
                 'avatar' => $user->avatar,

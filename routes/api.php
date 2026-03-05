@@ -7,6 +7,7 @@ use App\Http\Controllers\AuthorController;
 use App\Http\Controllers\ChapterController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\EditorialGroupController;
 use App\Http\Controllers\EditorController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\NovelController;
@@ -233,4 +234,23 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     Route::put('admin/contacts/{contact}/status', [ContactController::class, 'updateStatus']);
     Route::post('admin/contacts/{contact}/respond', [ContactController::class, 'respond']);
     Route::delete('admin/contacts/{contact}', [ContactController::class, 'destroy']);
+});
+
+// Editorial Group routes - admin only
+Route::middleware(['auth:sanctum', 'admin'])->group(function () {
+    Route::get('admin/editorial-groups', [EditorialGroupController::class, 'index']);
+    Route::post('admin/editorial-groups', [EditorialGroupController::class, 'store']);
+    Route::get('admin/editorial-groups/{editorial_group}', [EditorialGroupController::class, 'show']);
+    Route::put('admin/editorial-groups/{editorial_group}', [EditorialGroupController::class, 'update']);
+    Route::delete('admin/editorial-groups/{editorial_group}', [EditorialGroupController::class, 'destroy']);
+    Route::post('admin/editorial-groups/{editorial_group}/members', [EditorialGroupController::class, 'addMember']);
+    Route::delete('admin/editorial-groups/{editorial_group}/members/{username}', [EditorialGroupController::class, 'removeMember']);
+});
+
+// Editor routes - chapter review operations
+Route::middleware(['auth:sanctum', 'editor'])->group(function () {
+    Route::get('editor/reviews', [EditorController::class, 'pendingReviews']);
+    Route::post('editor/reviews/{chapter}', [EditorController::class, 'reviewChapter']);
+    Route::get('editor/reviews/history', [EditorController::class, 'reviewHistory']);
+    Route::get('editor/group', [EditorController::class, 'groupInfo']);
 });

@@ -199,7 +199,7 @@ class AdminController extends Controller
      */
     public function getModerationQueue(Request $request): JsonResponse
     {
-        if (!$request->user()->canReviewChapters()) {
+        if (!$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 

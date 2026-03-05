@@ -6,6 +6,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable implements MustVerifyEmail
@@ -20,6 +21,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     protected $fillable = [
         'name',
+        'username',
         'email',
         'password',
         'role',
@@ -31,6 +33,43 @@ class User extends Authenticatable implements MustVerifyEmail
         'is_active',
         'email_verified_at',
     ];
+
+    /**
+     * Boot the model.
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function (User $user) {
+            if (empty($user->username)) {
+                $user->username = static::generateUniqueUsername($user->name ?? 'user');
+            }
+        });
+    }
+
+    /**
+     * Generate a unique username from a display name.
+     * e.g. "John Doe" → "johndoe", "johndoe1", "johndoe2", ...
+     */
+    public static function generateUniqueUsername(string $name): string
+    {
+        $base = Str::slug($name, '');
+        if ($base === '') {
+            $base = 'user';
+        }
+        $base = Str::limit($base, 45, '');
+
+        $username = $base;
+        $counter = 1;
+
+        while (static::where('username', $username)->exists()) {
+            $username = $base . $counter;
+            $counter++;
+        }
+
+        return $username;
+    }
 
     /**
      * The attributes that should be hidden for serialization.
@@ -102,6 +141,7 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->role === self::ROLE_EDITOR;
     }
 
+
     /**
      * Check if user can review chapters (editor or admin)
      */
@@ -109,6 +149,7 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return in_array($this->role, [self::ROLE_EDITOR, self::ROLE_ADMIN]);
     }
+
 
     /**
      * Accessor for is_admin attribute.
@@ -185,6 +226,22 @@ class User extends Authenticatable implements MustVerifyEmail
     public function authorApplication()
     {
         return $this->hasOne(AuthorApplication::class);
+    }
+
+    /**
+     * Get the user's editorial group membership
+     */
+    public function editorialGroupMember()
+    {
+        return $this->hasOne(EditorialGroupMember::class);
+    }
+
+    /**
+     * Get the editorial group the user belongs to (via membership)
+     */
+    public function getEditorialGroupAttribute()
+    {
+        return $this->editorialGroupMember?->group;
     }
 
     /**
