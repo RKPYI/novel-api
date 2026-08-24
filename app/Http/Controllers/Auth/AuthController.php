@@ -166,15 +166,9 @@ class AuthController extends Controller
      */
     public function redirectToGoogle(Request $request): JsonResponse
     {
-        $state = $request->get('telescope') === 'true' ? 'telescope' : null;
-
         $driver = Socialite::driver('google');
         if (method_exists($driver, 'stateless')) {
             $driver = call_user_func([$driver, 'stateless']);
-        }
-
-        if ($state) {
-            $driver->with(['state' => $state]);
         }
 
         $url = $driver->redirect()->getTargetUrl();
@@ -233,16 +227,6 @@ class AuthController extends Controller
                 'is_admin' => $user->isAdmin(),
             ];
 
-            $state = $request->get('state');
-            if ($state === 'telescope') {
-                $redirectUrl = url('/telescope/login-callback?' . http_build_query([
-                    'token' => $token,
-                    'user' => base64_encode(json_encode($userData))
-                ]));
-
-                return redirect($redirectUrl);
-            }
-
             $frontendUrl = config('frontend.url');
             $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
                 'success' => 'true',
@@ -258,11 +242,6 @@ class AuthController extends Controller
                 'trace' => $e->getTraceAsString(),
                 'request' => $request->all()
             ]);
-
-            $state = $request->get('state');
-            if ($state === 'telescope') {
-                return redirect('/telescope/login?error=authentication_failed&message=' . urlencode($e->getMessage()));
-            }
 
             $frontendUrl = config('frontend.url');
             $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([

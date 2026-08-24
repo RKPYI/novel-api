@@ -122,8 +122,6 @@ FRONTEND_URL=https://yourdomain.com
 # Octane Configuration
 OCTANE_SERVER=roadrunner
 
-# Telescope - DISABLE in production
-TELESCOPE_ENABLED=false
 ```
 
 ---
@@ -717,7 +715,6 @@ Create `/etc/logrotate.d/novel-api`:
 - [ ] `APP_DEBUG=false` in production
 - [ ] Strong `APP_KEY` generated
 - [ ] Database credentials secured
-- [ ] `TELESCOPE_ENABLED=false` in production
 - [ ] File permissions set correctly (755/775)
 - [ ] HTTPS/SSL configured
 - [ ] Firewall configured (UFW/iptables)

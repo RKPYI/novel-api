@@ -10,7 +10,7 @@
 
 - Routes:
   - `routes/api.php` — main JSON API surface.
-  - `routes/web.php` — browser routes (mostly Telescope login).
+  - `routes/web.php` — browser routes.
 - Controllers:
   - `app/Http/Controllers/*` — endpoint implementations.
   - `app/Http/Controllers/Auth/AuthController.php` — auth endpoints.
@@ -122,7 +122,6 @@ Returns `401` for invalid credentials.
 #### Google OAuth (`/auth/google`, `/auth/google/callback`)
 
 - Uses Socialite (`Laravel\Socialite\Facades\Socialite`).
-- Supports `?telescope=true` which sets OAuth `state=telescope` and changes callback behavior.
 - On callback:
   - If user exists, updates provider info / last login.
   - Else creates a user and sets `email_verified_at = now()`.
@@ -579,4 +578,3 @@ If you’re onboarding a new dev, this is the most natural learning sequence for
 
 - **Chapter comments route param mismatch**: `CommentController@index` interprets `{chapterNumber}` as `chapters.id` (by querying `where('id', $chapterNumber)`), while the route name suggests chapter number.
 - **Migrations vs current model fields**: the earliest migrations create minimal schemas; later migrations add many more fields. When debugging schema issues, always check the full migration chain.
-
