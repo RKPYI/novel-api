@@ -5,7 +5,6 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use App\Models\User;
 
 class AdminMiddleware
 {
@@ -16,7 +15,6 @@ class AdminMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // Check if user is authenticated
         if (!$request->user()) {
             return response()->json([
                 'success' => false,
@@ -24,7 +22,6 @@ class AdminMiddleware
             ], 401);
         }
 
-        // Check if user is admin
         if (!$request->user()->isAdmin()) {
             return response()->json([
                 'success' => false,

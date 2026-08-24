@@ -115,20 +115,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function getIsAdminAttribute(): bool
     {
-        $roleValue = $this->role;
-        $expectedAdminRole = self::ROLE_ADMIN;
-        $logMessage = sprintf(
-            "User ID: %s, Role Value: %s (Type: %s), Is Role Set: %s, Is Role Empty: %s, Expected Admin Role: %s (Type: %s)",
-            $this->id,
-            var_export($roleValue, true),
-            gettype($roleValue),
-            isset($this->role) ? 'true' : 'false',
-            empty($this->role) && $this->role !== 0 ? 'true' : 'false', // Check for empty, allowing 0
-            var_export($expectedAdminRole, true),
-            gettype($expectedAdminRole)
-        );
-        \Illuminate\Support\Facades\Log::debug($logMessage);
-        return $roleValue === $expectedAdminRole;
+        return $this->role === self::ROLE_ADMIN;
     }
 
     /**
