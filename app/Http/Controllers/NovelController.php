@@ -2,15 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Models\Novel;
-use App\Models\Genre;
-use App\Models\Chapter;
-use App\Models\ReadingProgress;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use App\Helpers\CacheHelper;
 use App\Helpers\ImageUploadHelper;
+use App\Http\Requests\Novel\StoreNovelRequest;
+use App\Http\Requests\Novel\UpdateNovelRequest;
+use App\Models\Chapter;
+use App\Models\Genre;
+use App\Models\Novel;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class NovelController extends Controller
 {
@@ -71,30 +72,21 @@ class NovelController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public function store(StoreNovelRequest $request)
     {
-        $request->validate([
-            'title' => 'required|string|max:255',
-            'author' => 'nullable|string|max:255', // Optional - defaults to user's name
-            'description' => 'nullable|string',
-            'cover_image' => 'nullable|url',
-            'status' => 'in:ongoing,completed,hiatus',
-            'genres' => 'array',
-            'genres.*' => 'exists:genres,id'
-        ]);
+        $data = $request->validated();
 
         $novel = Novel::create([
             'user_id' => $request->user()->id,
-            'title' => $request->title,
-            'author' => $request->author ?? $request->user()->name, // Use provided author name or user's name
-            'description' => $request->description,
-            'cover_image' => $request->cover_image,
-            'status' => $request->status ?? 'ongoing'
+            'title' => $data['title'],
+            'author' => $data['author'] ?? $request->user()->name,
+            'description' => $data['description'] ?? null,
+            'cover_image' => $data['cover_image'] ?? null,
+            'status' => $data['status'] ?? 'ongoing'
         ]);
 
-        // Attach genres if provided
-        if ($request->has('genres')) {
-            $novel->genres()->attach($request->genres);
+        if (!empty($data['genres'])) {
+            $novel->genres()->attach($data['genres']);
         }
 
         return response()->json([
@@ -141,7 +133,7 @@ class NovelController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $slug)
+    public function update(UpdateNovelRequest $request, string $slug)
     {
         $novel = Novel::where('slug', $slug)->first();
         if (!$novel) {
@@ -150,36 +142,26 @@ class NovelController extends Controller
             ], 404);
         }
 
-        // Check ownership (only owner or admin can update)
         if ($novel->user_id !== $request->user()->id && !$request->user()->isAdmin()) {
             return response()->json([
                 'message' => 'You can only edit your own novels'
             ], 403);
         }
 
-        $request->validate([
-            'title' => 'sometimes|required|string|max:255',
-            'author' => 'sometimes|required|string|max:255',
-            'description' => 'nullable|string',
-            'cover_image' => 'nullable|url',
-            'status' => 'sometimes|in:ongoing,completed,hiatus',
-            'genres' => 'sometimes|array',
-            'genres.*' => 'exists:genres,id'
-        ]);
+        $data = $request->validated();
 
         $novel->update(array_filter([
-            'title' => $request->title,
-            'author' => $request->author,
-            'description' => $request->description,
-            'cover_image' => $request->cover_image,
-            'status' => $request->status
+            'title' => $data['title'] ?? null,
+            'author' => $data['author'] ?? null,
+            'description' => $data['description'] ?? null,
+            'cover_image' => $data['cover_image'] ?? null,
+            'status' => $data['status'] ?? null
         ], function($value) {
             return $value !== null;
         }));
 
-        // Update genres if provided
-        if ($request->has('genres')) {
-            $novel->genres()->sync($request->genres);
+        if (array_key_exists('genres', $data)) {
+            $novel->genres()->sync($data['genres'] ?? []);
         }
 
         return response()->json([

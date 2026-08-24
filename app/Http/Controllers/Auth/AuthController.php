@@ -3,6 +3,10 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\ChangePasswordRequest;
+use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\RegisterRequest;
+use App\Http\Requests\Auth\UpdateProfileRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -10,8 +14,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Facades\Socialite;
 
 class AuthController extends Controller
@@ -19,29 +22,17 @@ class AuthController extends Controller
     /**
      * Register a new user
      */
-    public function register(Request $request): JsonResponse
+    public function register(RegisterRequest $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8|confirmed',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
+        $data = $request->validated();
 
         $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($data['password']),
             'provider' => 'email',
         ]);
 
-        // Send email verification
         $user->sendEmailVerificationNotification();
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -67,27 +58,23 @@ class AuthController extends Controller
     /**
      * Login user
      */
-    public function login(Request $request): JsonResponse
+    public function login(LoginRequest $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
-            'password' => 'required|string',
-        ]);
+        $credentials = $request->validated();
 
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        if (!Auth::attempt($request->only('email', 'password'))) {
+        if (!Auth::attempt($credentials)) {
             return response()->json([
                 'message' => 'Invalid credentials'
             ], 401);
         }
 
         $user = Auth::user();
+        if (!$user instanceof User) {
+            return response()->json([
+                'message' => 'User not found'
+            ], 401);
+        }
+
         $user->update(['last_login_at' => now()]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -150,26 +137,13 @@ class AuthController extends Controller
     /**
      * Update user profile
      */
-    public function updateProfile(Request $request): JsonResponse
+    public function updateProfile(UpdateProfileRequest $request): JsonResponse
     {
         $user = $request->user();
 
-        $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|string|max:255',
-            'bio' => 'nullable|string|max:500',
-            'avatar' => 'nullable|url|max:255',
-        ]);
+        $user->update($request->validated());
 
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $user->update($request->only(['name', 'bio', 'avatar']));
-
-        // Clear user-related caches
+        // Keep user cache entries consistent after profile edits.
         Cache::forget("user_{$user->id}");
         Cache::forget("user_profile_{$user->id}");
 
@@ -192,10 +166,12 @@ class AuthController extends Controller
      */
     public function redirectToGoogle(Request $request): JsonResponse
     {
-        // Check if this is for Telescope access
         $state = $request->get('telescope') === 'true' ? 'telescope' : null;
 
-        $driver = Socialite::driver('google')->stateless();
+        $driver = Socialite::driver('google');
+        if (method_exists($driver, 'stateless')) {
+            $driver = call_user_func([$driver, 'stateless']);
+        }
 
         if ($state) {
             $driver->with(['state' => $state]);
@@ -214,12 +190,16 @@ class AuthController extends Controller
     public function handleGoogleCallback(Request $request): RedirectResponse
     {
         try {
-            $googleUser = Socialite::driver('google')->stateless()->user();
+            $driver = Socialite::driver('google');
+            if (method_exists($driver, 'stateless')) {
+                $driver = call_user_func([$driver, 'stateless']);
+            }
+
+            $googleUser = $driver->user();
 
             $user = User::where('email', $googleUser->getEmail())->first();
 
             if ($user) {
-                // Update existing user with Google info if not already set
                 if (!$user->provider_id) {
                     $user->update([
                         'provider' => 'google',
@@ -231,7 +211,6 @@ class AuthController extends Controller
                     $user->update(['last_login_at' => now()]);
                 }
             } else {
-                // Create new user
                 $user = User::create([
                     'name' => $googleUser->getName(),
                     'email' => $googleUser->getEmail(),
@@ -254,10 +233,8 @@ class AuthController extends Controller
                 'is_admin' => $user->isAdmin(),
             ];
 
-            // Check if this is a Telescope login request
             $state = $request->get('state');
             if ($state === 'telescope') {
-                // Redirect to Telescope login page with token and user data
                 $redirectUrl = url('/telescope/login-callback?' . http_build_query([
                     'token' => $token,
                     'user' => base64_encode(json_encode($userData))
@@ -266,8 +243,7 @@ class AuthController extends Controller
                 return redirect($redirectUrl);
             }
 
-            // Regular frontend redirect
-            $frontendUrl = env('FRONTEND_URL', 'https://rantale.randk.me');
+            $frontendUrl = config('frontend.url');
             $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
                 'success' => 'true',
                 'token' => $token,
@@ -277,20 +253,18 @@ class AuthController extends Controller
             return redirect($redirectUrl);
 
         } catch (\Exception $e) {
-            // Log the actual error for debugging
-            \Log::error('Google OAuth failed', [
+            Log::error('Google OAuth failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'request' => $request->all()
             ]);
 
-            // Check if this is a Telescope login request
             $state = $request->get('state');
             if ($state === 'telescope') {
                 return redirect('/telescope/login?error=authentication_failed&message=' . urlencode($e->getMessage()));
             }
 
-            $frontendUrl = env('FRONTEND_URL', 'https://rantale.randk.me');
+            $frontendUrl = config('frontend.url');
             $redirectUrl = $frontendUrl . '/auth/google/callback?' . http_build_query([
                 'error' => 'authentication_failed',
                 'message' => $e->getMessage()
@@ -303,37 +277,26 @@ class AuthController extends Controller
     /**
      * Change password
      */
-    public function changePassword(Request $request): JsonResponse
+    public function changePassword(ChangePasswordRequest $request): JsonResponse
     {
         $user = $request->user();
 
-        // Users who signed up with Google don't have passwords
         if ($user->provider === 'google' && !$user->password) {
             return response()->json([
                 'message' => 'Cannot change password for Google-authenticated users without existing password'
             ], 400);
         }
 
-        $validator = Validator::make($request->all(), [
-            'current_password' => 'required|string',
-            'new_password' => 'required|string|min:8|confirmed',
-        ]);
+        $data = $request->validated();
 
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        if (!Hash::check($request->current_password, $user->password)) {
+        if (!Hash::check($data['current_password'], $user->password)) {
             return response()->json([
                 'message' => 'Current password is incorrect'
             ], 400);
         }
 
         $user->update([
-            'password' => Hash::make($request->new_password)
+            'password' => Hash::make($data['new_password'])
         ]);
 
         return response()->json([
@@ -364,30 +327,26 @@ class AuthController extends Controller
     /**
      * Verify user email
      */
-    public function verifyEmail(Request $request, $id, $hash)
+    public function verifyEmail(Request $request, $id, $hash): RedirectResponse
     {
         $user = User::find($id);
 
-        $frontendUrl = env('FRONTEND_URL', 'http://localhost:3000');
+        $frontendUrl = config('frontend.url');
 
         if (!$user) {
-            // Redirect to frontend with error
             return redirect($frontendUrl . '/verify-email?status=error&message=Invalid verification link');
         }
 
         if (!hash_equals((string) $hash, sha1($user->email))) {
-            // Redirect to frontend with error
             return redirect($frontendUrl . '/verify-email?status=error&message=Invalid verification link');
         }
 
         if ($user->hasVerifiedEmail()) {
-            // Redirect to frontend - already verified
             return redirect($frontendUrl . '/verify-email?status=already_verified&message=Email is already verified');
         }
 
         $user->markEmailAsVerified();
 
-        // Redirect to frontend with success
         return redirect($frontendUrl . '/verify-email?status=success&message=Email verified successfully');
     }
 
