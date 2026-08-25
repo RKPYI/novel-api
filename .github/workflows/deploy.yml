@@ -13,6 +13,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Cloudflare WARP for IPv6 support
+        uses: fscarmen/warp-on-actions@v1
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -21,18 +24,13 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             cd /root/novel-api
-            
-            # Disable git prompt for clean pull
+            git config --global --add safe.directory /root/novel-api
             git config core.fileMode false
             git pull origin main
             
-            # Install production dependencies
             composer install --optimize-autoloader --no-dev --no-interaction
-            
-            # Run database migrations
             php artisan migrate --force
             
-            # Clear and optimize production caches
             php artisan config:clear
             php artisan route:clear
             php artisan cache:clear
@@ -41,13 +39,10 @@ jobs:
             php artisan view:cache
             php artisan event:cache
             
-            # Reload PHP-FPM to flush OPcache
             sudo systemctl reload php8.4-fpm
             
-            # Restart Supervisor queue workers (if active)
             if systemctl is-active --quiet supervisor; then
                 sudo supervisorctl restart all
             fi
             
-            # Restore permissions
             chmod -R 775 storage bootstrap/cache
