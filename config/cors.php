@@ -19,7 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://rantale.randk.me', 'http://localhost:3000', 'http://localhost:3001'],
+    'allowed_origins' => ['https://rantale.ranggadk.com', 'http://localhost:3000', 'http://localhost:3001'],
     // 'allowed_origins' => ['*'],
 
     'allowed_origins_patterns' => [],
