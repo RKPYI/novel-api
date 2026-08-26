@@ -17,21 +17,15 @@ jobs:
         uses: fscarmen/warp-on-actions@v1.4
 
       - name: Configure SSH Key
-        shell: bash
         run: |
-          mkdir -p "$HOME/.ssh"
-          chmod 700 "$HOME/.ssh"
-          echo "${{ secrets.SERVER_SSH_KEY }}" > "$HOME/.ssh/id_ed25519"
-          chmod 600 "$HOME/.ssh/id_ed25519"
-          
-          for i in {1..5}; do
-            ssh-keyscan -t ed25519 -H ${{ secrets.SERVER_HOST }} >> "$HOME/.ssh/known_hosts" && break || sleep 2
-          done
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
 
       - name: Execute Deployment
-        shell: bash
         run: |
-          ssh -i "$HOME/.ssh/id_ed25519" ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+          ssh -i ~/.ssh/id_ed25519 ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
             set -e
             cd /root/novel-api
             git config --global --add safe.directory /root/novel-api
@@ -49,10 +43,10 @@ jobs:
             php artisan view:cache
             php artisan event:cache
             
-            systemctl reload php8.4-fpm
+            sudo systemctl reload php8.4-fpm
             
             if systemctl is-active --quiet supervisor; then
-                supervisorctl restart all
+                sudo supervisorctl restart all
             fi
             
             chmod -R 775 storage bootstrap/cache
