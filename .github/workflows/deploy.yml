@@ -49,10 +49,10 @@ jobs:
             php artisan view:cache
             php artisan event:cache
             
-            sudo systemctl reload php8.4-fpm
+            systemctl reload php8.4-fpm
             
             if systemctl is-active --quiet supervisor; then
-                sudo supervisorctl restart all
+                supervisorctl restart all
             fi
             
             chmod -R 775 storage bootstrap/cache
