@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Helpers\CacheHelper;
+use App\Helpers\ChapterOrderHelper;
 use App\Helpers\ImageUploadHelper;
 use App\Http\Requests\Novel\StoreNovelRequest;
 use App\Http\Requests\Novel\UpdateNovelRequest;
 use App\Models\Chapter;
 use App\Models\Genre;
 use App\Models\Novel;
+use App\Services\VolumeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -82,7 +84,8 @@ class NovelController extends Controller
             'author' => $data['author'] ?? $request->user()->name,
             'description' => $data['description'] ?? null,
             'cover_image' => $data['cover_image'] ?? null,
-            'status' => $data['status'] ?? 'ongoing'
+            'status' => $data['status'] ?? 'ongoing',
+            'uses_volumes' => (bool) ($data['uses_volumes'] ?? false),
         ]);
 
         if (!empty($data['genres'])) {
@@ -102,18 +105,51 @@ class NovelController extends Controller
     {
         // Don't cache the show endpoint since views are incremented on every request
         // and need to be real-time for low-traffic novels
-        $novel = Novel::with(['genres', 'chapters' => function($query) {
-            // Only show published (approved) chapters to public
-            $query->select('id', 'novel_id', 'chapter_number', 'title', 'word_count')
-                ->whereIn('status', [Chapter::STATUS_APPROVED, Chapter::STATUS_PENDING_UPDATE])
-                ->whereNotNull('published_at')
-                ->orderBy('chapter_number');
-        }])->where('slug', $slug)->first();
+        $novel = Novel::with(['genres'])->where('slug', $slug)->first();
 
         if (!$novel) {
             return response()->json([
                 'message' => 'Novel not found'
             ], 404);
+        }
+
+        if ($novel->uses_volumes) {
+            $publishedQuery = Chapter::query()
+                ->where('chapters.novel_id', $novel->id)
+                ->whereIn('chapters.status', [Chapter::STATUS_APPROVED, Chapter::STATUS_PENDING_UPDATE])
+                ->whereNotNull('chapters.published_at')
+                ->with('volume:id,volume_number,title');
+
+            $chapters = ChapterOrderHelper::readingOrderQuery($novel, $publishedQuery)->get();
+            $novel->setRelation('chapters', $chapters->map(fn (Chapter $c) => ChapterOrderHelper::formatChapterSummary($c))->values());
+
+            $volumes = $novel->volumes()
+                ->with(['publishedChapters.volume'])
+                ->orderBy('volume_number')
+                ->get()
+                ->map(function ($volume) {
+                    $chapters = $volume->publishedChapters->sortBy('chapter_number')->map(
+                        fn (Chapter $c) => ChapterOrderHelper::formatChapterSummary($c)
+                    )->values();
+
+                    return [
+                        'id' => $volume->id,
+                        'volume_number' => $volume->volume_number,
+                        'title' => $volume->title,
+                        'description' => $volume->description,
+                        'chapters' => $chapters,
+                    ];
+                });
+
+            $novel->setRelation('volumes', $volumes);
+        } else {
+            $novel->load(['chapters' => function ($query) {
+                $query->select('id', 'novel_id', 'chapter_number', 'title', 'word_count', 'volume_id')
+                    ->whereIn('status', [Chapter::STATUS_APPROVED, Chapter::STATUS_PENDING_UPDATE])
+                    ->whereNotNull('published_at')
+                    ->whereNull('volume_id')
+                    ->orderBy('chapter_number');
+            }]);
         }
 
         // Increment views count atomically without updating timestamps
@@ -149,16 +185,22 @@ class NovelController extends Controller
         }
 
         $data = $request->validated();
+        $usesVolumes = array_key_exists('uses_volumes', $data) ? (bool) $data['uses_volumes'] : null;
 
         $novel->update(array_filter([
             'title' => $data['title'] ?? null,
             'author' => $data['author'] ?? null,
             'description' => $data['description'] ?? null,
             'cover_image' => $data['cover_image'] ?? null,
-            'status' => $data['status'] ?? null
-        ], function($value) {
+            'status' => $data['status'] ?? null,
+        ], function ($value) {
             return $value !== null;
         }));
+
+        if ($usesVolumes !== null) {
+            app(VolumeService::class)->syncVolumeMode($novel->fresh(), $usesVolumes);
+            $novel->refresh();
+        }
 
         if (array_key_exists('genres', $data)) {
             $novel->genres()->sync($data['genres'] ?? []);
@@ -166,7 +208,7 @@ class NovelController extends Controller
 
         return response()->json([
             'message' => 'Novel updated successfully',
-            'novel' => $novel->load('genres')
+            'novel' => $novel->load(['genres', 'volumes'])
         ], 200);
     }
 
@@ -280,8 +322,8 @@ class NovelController extends Controller
         // Get limit from request, default to 20, max 50
         $limit = min($request->get('limit', 20), 50);
 
-        // Cache recently updated for 10 minutes
-        $cacheKey = 'novels_recently_updated_' . $limit;
+        // Cache recently updated for 10 minutes (v2 includes volume context)
+        $cacheKey = 'novels_recently_updated_v2_' . $limit;
 
         $novels = CacheHelper::remember($cacheKey, now()->addMinutes(10), function () use ($limit) {
             // Get novels ordered by their most recent chapter's created_at
@@ -304,7 +346,13 @@ class NovelController extends Controller
                     'latest_chapter_id' => \App\Models\Chapter::select('id')
                         ->whereColumn('novel_id', 'novels.id')
                         ->orderBy('created_at', 'desc')
-                        ->limit(1)
+                        ->limit(1),
+                    'latest_chapter_volume_number' => \App\Models\Chapter::query()
+                        ->select('volumes.volume_number')
+                        ->leftJoin('volumes', 'chapters.volume_id', '=', 'volumes.id')
+                        ->whereColumn('chapters.novel_id', 'novels.id')
+                        ->orderBy('chapters.created_at', 'desc')
+                        ->limit(1),
                 ])
                 ->whereHas('chapters') // Only novels with at least one chapter
                 ->orderBy('latest_chapter_created_at', 'desc')

@@ -5,11 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use App\Helpers\CacheHelper;
+use App\Helpers\ChapterOrderHelper;
 
 class Chapter extends Model
 {
     protected $fillable = [
-        'novel_id', 'title', 'content', 'chapter_number',
+        'novel_id', 'volume_id', 'title', 'content', 'chapter_number',
         'word_count', 'views', 'is_free', 'published_at',
         'status', 'reviewed_by', 'reviewed_at',
         'pending_title', 'pending_content',
@@ -33,6 +34,11 @@ class Chapter extends Model
     public function novel()
     {
         return $this->belongsTo(Novel::class);
+    }
+
+    public function volume()
+    {
+        return $this->belongsTo(Volume::class);
     }
 
     public function readingProgress()
@@ -212,22 +218,24 @@ class Chapter extends Model
         return $query->where('status', self::STATUS_PENDING_REVIEW);
     }
 
-    // Get next chapter
+    // Get next chapter in global reading order
     public function getNextChapterAttribute()
     {
-        return static::where('novel_id', $this->novel_id)
-            ->where('chapter_number', '>', $this->chapter_number)
-            ->orderBy('chapter_number')
-            ->first();
+        if (!$this->novel) {
+            return null;
+        }
+
+        return ChapterOrderHelper::adjacentPublishedChapter($this->novel, $this, 'next');
     }
 
-    // Get previous chapter
+    // Get previous chapter in global reading order
     public function getPreviousChapterAttribute()
     {
-        return static::where('novel_id', $this->novel_id)
-            ->where('chapter_number', '<', $this->chapter_number)
-            ->orderBy('chapter_number', 'desc')
-            ->first();
+        if (!$this->novel) {
+            return null;
+        }
+
+        return ChapterOrderHelper::adjacentPublishedChapter($this->novel, $this, 'previous');
     }
 
     /**

@@ -11,13 +11,14 @@ class Novel extends Model
 {
     protected $fillable = [
         'user_id', 'title', 'author', 'slug', 'description', 'status', 'cover_image',
-        'total_chapters', 'views', 'likes', 'rating', 'rating_count',
+        'uses_volumes', 'total_chapters', 'views', 'likes', 'rating', 'rating_count',
         'is_featured', 'is_trending', 'published_at'
     ];
 
     protected $casts = [
         'is_featured' => 'boolean',
         'is_trending' => 'boolean',
+        'uses_volumes' => 'boolean',
         'published_at' => 'datetime',
         'rating' => 'decimal:2',
     ];
@@ -25,6 +26,16 @@ class Novel extends Model
     public function chapters()
     {
         return $this->hasMany(Chapter::class)->orderBy('chapter_number');
+    }
+
+    public function volumes()
+    {
+        return $this->hasMany(Volume::class)->orderBy('volume_number');
+    }
+
+    public function chaptersWithoutVolume()
+    {
+        return $this->hasMany(Chapter::class)->whereNull('volume_id')->orderBy('chapter_number');
     }
 
     /**

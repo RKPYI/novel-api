@@ -13,6 +13,7 @@ use App\Http\Controllers\NovelController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RatingController;
 use App\Http\Controllers\ReadingProgressController;
+use App\Http\Controllers\VolumeController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserLibraryController;
 use Illuminate\Http\Request;
@@ -130,6 +131,10 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
 // Chapter routes - read operations (public, only published chapters)
 Route::get('novels/{novel:slug}/chapters', [ChapterController::class, 'index']);
 Route::get('novels/{novel:slug}/chapters/{chapterNumber}', [ChapterController::class, 'show']);
+Route::get('novels/{novel:slug}/volumes/{volumeNumber}/chapters/{chapterNumber}', [ChapterController::class, 'showByVolume']);
+
+// Volume routes - read operations
+Route::get('novels/{novel:slug}/volumes', [VolumeController::class, 'index']);
 
 // Chapter routes - author operations (create/edit/delete and manage workflow)
 Route::middleware(['auth:sanctum', 'author'])->group(function () {
@@ -138,10 +143,19 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
 
     // Author's view of a specific chapter by chapter number (including unpublished)
     Route::get('author/novels/{novel:slug}/chapters/{chapterNumber}', [ChapterController::class, 'authorShow']);
+    Route::get('author/novels/{novel:slug}/volumes/{volumeNumber}/chapters/{chapterNumber}', [ChapterController::class, 'authorShowByVolume']);
+
+    // Volume management
+    Route::get('author/novels/{novel:slug}/volumes', [VolumeController::class, 'authorIndex']);
+    Route::post('novels/{novel:slug}/volumes', [VolumeController::class, 'store']);
+    Route::put('novels/{novel:slug}/volumes/{volume}', [VolumeController::class, 'update']);
+    Route::delete('novels/{novel:slug}/volumes/{volume}', [VolumeController::class, 'destroy']);
 
     // Chapter CRUD
     Route::post('novels/{novel:slug}/chapters', [ChapterController::class, 'store']);
     Route::put('novels/{novel:slug}/chapters/{chapter}', [ChapterController::class, 'update']);
+    Route::post('novels/{novel:slug}/chapters/{chapter}/move-volume', [ChapterController::class, 'moveToVolume']);
+    Route::post('novels/{novel:slug}/chapters/bulk-move-volume', [ChapterController::class, 'bulkMoveToVolume']);
     Route::delete('novels/{novel:slug}/chapters/{chapter}', [ChapterController::class, 'destroy']);
     Route::post('novels/{novel:slug}/chapters/bulk-delete', [ChapterController::class, 'bulkDestroy']);
 
@@ -152,6 +166,7 @@ Route::middleware(['auth:sanctum', 'author'])->group(function () {
 // Comment routes - read operations
 Route::get('novels/{novel:slug}/comments', [CommentController::class, 'index']);
 Route::get('novels/{novel:slug}/chapters/{chapterNumber}/comments', [CommentController::class, 'index']);
+Route::get('novels/{novel:slug}/volumes/{volumeNumber}/chapters/{chapterNumber}/comments', [CommentController::class, 'index']);
 
 // Comment write operations
 Route::middleware(['auth:sanctum'])->group(function () {

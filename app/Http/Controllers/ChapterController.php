@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\CacheHelper;
+use App\Helpers\ChapterOrderHelper;
 use App\Models\Chapter;
 use App\Models\Novel;
+use App\Models\Volume;
+use App\Services\VolumeService;
 use Illuminate\Http\Request;
-use App\Helpers\CacheHelper;
 
 class ChapterController extends Controller
 {
@@ -15,35 +18,20 @@ class ChapterController extends Controller
      */
     public function index(Novel $novel)
     {
-        // Cache chapters list for 30 minutes (only published chapters for public)
         $cacheKey = "chapters_novel_{$novel->id}_published";
 
-        $chapters = CacheHelper::remember($cacheKey, now()->addMinutes(30), function () use ($novel) {
-            return Chapter::where('novel_id', $novel->id)
-                ->whereIn('status', [Chapter::STATUS_APPROVED, Chapter::STATUS_PENDING_UPDATE])
-                ->whereNotNull('published_at')
-                ->select('id', 'title', 'chapter_number', 'word_count')
-                ->orderBy('chapter_number')
-                ->get()
-                ->map(function ($chapter) {
-                    return [
-                        'id' => $chapter->id,
-                        'title' => $chapter->title,
-                        'chapter_number' => $chapter->chapter_number,
-                        'word_count' => $chapter->word_count,
-                    ];
-                });
-    }, ["chapters_novel_{$novel->id}"]);
+        $payload = CacheHelper::remember($cacheKey, now()->addMinutes(30), function () use ($novel) {
+            return $this->buildPublicChapterList($novel);
+        }, ["chapters_novel_{$novel->id}"]);
 
-        return response()->json([
+        return response()->json(array_merge([
             'message' => 'Chapters for novel: ' . $novel->title,
             'novel' => [
                 'title' => $novel->title,
                 'slug' => $novel->slug,
                 'author' => $novel->author,
             ],
-            'chapters' => $chapters,
-        ]);
+        ], $payload));
     }
 
     /**
@@ -61,24 +49,34 @@ class ChapterController extends Controller
             ], 403);
         }
 
-        $chapters = Chapter::where('novel_id', $novel->id)
-            ->with(['latestReview' => function ($query) {
-                $query->select('chapter_reviews.id', 'chapter_reviews.chapter_id', 'action', 'notes', 'chapter_reviews.created_at');
-            }])
-            ->select('id', 'title', 'chapter_number', 'word_count', 'status', 'reviewed_at', 'created_at', 'published_at')
-            ->orderBy('chapter_number')
-            ->get();
+        $chapters = ChapterOrderHelper::readingOrderQuery(
+            $novel,
+            Chapter::query()
+                ->where('chapters.novel_id', $novel->id)
+                ->with(['latestReview' => function ($query) {
+                    $query->select('chapter_reviews.id', 'chapter_reviews.chapter_id', 'action', 'notes', 'chapter_reviews.created_at');
+                }, 'volume:id,volume_number,title'])
+        )->get();
 
-        return response()->json([
+        $response = [
             'message' => 'All chapters for novel: ' . $novel->title,
+            'uses_volumes' => $novel->uses_volumes,
             'novel' => [
                 'id' => $novel->id,
                 'title' => $novel->title,
                 'slug' => $novel->slug,
                 'author' => $novel->author,
             ],
-            'chapters' => $chapters,
-        ]);
+        ];
+
+        if ($novel->uses_volumes) {
+            $response['volumes'] = $this->groupChaptersByVolume($chapters, includeStatus: true);
+            $response['chapters'] = $chapters->map(fn (Chapter $c) => $this->formatAuthorChapter($c))->values();
+        } else {
+            $response['chapters'] = $chapters->map(fn (Chapter $c) => $this->formatAuthorChapter($c))->values();
+        }
+
+        return response()->json($response);
     }
 
     /**
@@ -87,42 +85,36 @@ class ChapterController extends Controller
      */
     public function authorShow(Request $request, Novel $novel, $chapterNumber)
     {
+        return $this->authorShowChapter($request, $novel, (int) $chapterNumber, null);
+    }
+
+    public function authorShowByVolume(Request $request, Novel $novel, $volumeNumber, $chapterNumber)
+    {
+        return $this->authorShowChapter($request, $novel, (int) $chapterNumber, (int) $volumeNumber);
+    }
+
+    private function authorShowChapter(Request $request, Novel $novel, int $chapterNumber, ?int $volumeNumber)
+    {
         $user = $request->user();
 
-        // Check if user owns this novel or is admin
         if ($novel->user_id !== $user->id && !$user->isAdmin()) {
             return response()->json([
                 'message' => 'You can only view your own novel chapters'
             ], 403);
         }
 
-        $chapter = Chapter::where('novel_id', $novel->id)
-            ->where('chapter_number', $chapterNumber)
-            ->with(['latestReview' => function ($query) {
-                $query->select('chapter_reviews.id', 'chapter_reviews.chapter_id', 'action', 'notes', 'chapter_reviews.created_at');
-            }])
-            ->first();
+        $chapter = ChapterOrderHelper::resolveChapter($novel, $chapterNumber, $volumeNumber, publishedOnly: false);
 
         if (!$chapter) {
-            return response()->json([
-                'message' => 'Chapter not found'
-            ], 404);
+            return response()->json(['message' => 'Chapter not found'], 404);
         }
 
-        // Provide previous/next chapter numbers within the author's full set (includes drafts/unpublished)
-        $previousChapter = Chapter::where('novel_id', $novel->id)
-            ->where('chapter_number', '<', $chapter->chapter_number)
-            ->orderBy('chapter_number', 'desc')
-            ->first();
+        $chapter->load(['latestReview' => function ($query) {
+            $query->select('chapter_reviews.id', 'chapter_reviews.chapter_id', 'action', 'notes', 'chapter_reviews.created_at');
+        }, 'volume:id,volume_number,title']);
 
-        $nextChapter = Chapter::where('novel_id', $novel->id)
-            ->where('chapter_number', '>', $chapter->chapter_number)
-            ->orderBy('chapter_number', 'asc')
-            ->first();
-
-        $chapterData = $chapter->toArray();
-        $chapterData['previous_chapter'] = $previousChapter ? $previousChapter->chapter_number : null;
-        $chapterData['next_chapter'] = $nextChapter ? $nextChapter->chapter_number : null;
+        $navigation = $this->buildAuthorNavigation($novel, $chapter);
+        $chapterData = array_merge($chapter->toArray(), $navigation);
 
         return response()->json([
             'message' => 'Chapter details (author view)',
@@ -131,6 +123,7 @@ class ChapterController extends Controller
                 'title' => $novel->title,
                 'slug' => $novel->slug,
                 'author' => $novel->author,
+                'uses_volumes' => $novel->uses_volumes,
             ],
             'chapter' => $chapterData,
         ], 200);
@@ -195,6 +188,143 @@ class ChapterController extends Controller
     }
 
     /**
+     * Move a chapter to another volume with automatic renumbering in both volumes.
+     */
+    public function moveToVolume(Request $request, Novel $novel, Chapter $chapter)
+    {
+        if ($chapter->novel_id !== $novel->id) {
+            return response()->json([
+                'message' => 'Chapter does not belong to this novel',
+            ], 404);
+        }
+
+        $user = $request->user();
+        if ($novel->user_id !== $user->id && !$user->isAdmin()) {
+            return response()->json([
+                'message' => 'You can only move chapters in your own novels',
+            ], 403);
+        }
+
+        if (!$novel->uses_volumes) {
+            return response()->json([
+                'message' => 'This novel does not use volumes',
+            ], 400);
+        }
+
+        $request->validate([
+            'volume_id' => 'required|integer|exists:volumes,id',
+            'chapter_number' => 'nullable|integer|min:1',
+        ]);
+
+        $targetVolume = Volume::where('id', $request->volume_id)
+            ->where('novel_id', $novel->id)
+            ->first();
+
+        if (!$targetVolume) {
+            return response()->json([
+                'message' => 'Target volume does not belong to this novel',
+            ], 422);
+        }
+
+        if ($chapter->volume_id === $targetVolume->id && !$request->filled('chapter_number')) {
+            return response()->json([
+                'message' => 'Chapter is already in this volume',
+            ], 400);
+        }
+
+        try {
+            $chapter->load('novel');
+            $movedChapter = app(VolumeService::class)->moveChapterToVolume(
+                $chapter,
+                $targetVolume,
+                $request->input('chapter_number')
+            );
+        } catch (\InvalidArgumentException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        CacheHelper::flush(["chapters_novel_{$novel->id}"], ["chapters_novel_{$novel->id}"]);
+
+        return response()->json([
+            'message' => 'Chapter moved successfully',
+            'chapter' => ChapterOrderHelper::formatChapterSummary(
+                $movedChapter->load('volume:id,volume_number,title')
+            ),
+        ]);
+    }
+
+    /**
+     * Move multiple chapters to another volume with automatic renumbering.
+     */
+    public function bulkMoveToVolume(Request $request, Novel $novel)
+    {
+        $user = $request->user();
+        if ($novel->user_id !== $user->id && !$user->isAdmin()) {
+            return response()->json([
+                'message' => 'You can only move chapters in your own novels',
+            ], 403);
+        }
+
+        if (!$novel->uses_volumes) {
+            return response()->json([
+                'message' => 'This novel does not use volumes',
+            ], 400);
+        }
+
+        $request->validate([
+            'chapter_ids' => 'required|array|min:1',
+            'chapter_ids.*' => 'required|integer|exists:chapters,id',
+            'volume_id' => 'required|integer|exists:volumes,id',
+            'chapter_number' => 'nullable|integer|min:1',
+        ]);
+
+        $targetVolume = Volume::where('id', $request->volume_id)
+            ->where('novel_id', $novel->id)
+            ->first();
+
+        if (!$targetVolume) {
+            return response()->json([
+                'message' => 'Target volume does not belong to this novel',
+            ], 422);
+        }
+
+        $chapterIds = $request->chapter_ids;
+
+        $allInTarget = Chapter::whereIn('id', $chapterIds)
+            ->where('novel_id', $novel->id)
+            ->where('volume_id', $targetVolume->id)
+            ->count() === count($chapterIds);
+
+        if ($allInTarget && !$request->filled('chapter_number')) {
+            return response()->json([
+                'message' => 'All selected chapters are already in this volume',
+            ], 400);
+        }
+
+        try {
+            $movedCount = app(VolumeService::class)->bulkMoveChaptersToVolume(
+                $novel,
+                $chapterIds,
+                $targetVolume,
+                $request->input('chapter_number')
+            );
+        } catch (\InvalidArgumentException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        CacheHelper::flush(["chapters_novel_{$novel->id}"], ["chapters_novel_{$novel->id}"]);
+
+        return response()->json([
+            'message' => 'Chapters moved successfully',
+            'moved_count' => $movedCount,
+        ]);
+    }
+
+    /**
      * Store a newly created chapter in storage.
      */
     public function store(Request $request, Novel $novel)
@@ -211,24 +341,41 @@ class ChapterController extends Controller
             'title' => 'required|string|max:255',
             'content' => 'required|string',
             'chapter_number' => 'nullable|integer|min:1',
+            'volume_id' => 'nullable|integer|exists:volumes,id',
+            'volume_number' => 'nullable|integer|min:1',
             'is_free' => 'boolean',
             'published_at' => 'nullable|date',
             'save_as_draft' => 'boolean'
         ]);
 
+        $volume = $this->resolveVolumeForChapter($novel, $request);
+        if ($volume === false) {
+            return response()->json(['message' => 'Invalid volume for this novel'], 422);
+        }
+
         // Auto-generate chapter number if not provided
         if (!$request->chapter_number) {
-            $lastChapter = Chapter::where('novel_id', $novel->id)
-                ->orderBy('chapter_number', 'desc')
-                ->first();
+            $lastChapterQuery = Chapter::where('novel_id', $novel->id);
+            if ($novel->uses_volumes && $volume) {
+                $lastChapterQuery->where('volume_id', $volume->id);
+            } else {
+                $lastChapterQuery->whereNull('volume_id');
+            }
+            $lastChapter = $lastChapterQuery->orderBy('chapter_number', 'desc')->first();
             $chapterNumber = $lastChapter ? $lastChapter->chapter_number + 1 : 1;
         } else {
             $chapterNumber = $request->chapter_number;
 
-            // Check if chapter number already exists
-            $existingChapter = Chapter::where('novel_id', $novel->id)
-                ->where('chapter_number', $chapterNumber)
-                ->first();
+            $existingChapterQuery = Chapter::where('novel_id', $novel->id)
+                ->where('chapter_number', $chapterNumber);
+
+            if ($novel->uses_volumes && $volume) {
+                $existingChapterQuery->where('volume_id', $volume->id);
+            } else {
+                $existingChapterQuery->whereNull('volume_id');
+            }
+
+            $existingChapter = $existingChapterQuery->first();
 
             if ($existingChapter) {
                 return response()->json([
@@ -258,6 +405,7 @@ class ChapterController extends Controller
 
         $chapter = Chapter::create([
             'novel_id' => $novel->id,
+            'volume_id' => $volume?->id,
             'title' => $request->title,
             'content' => $request->content,
             'chapter_number' => $chapterNumber,
@@ -298,54 +446,43 @@ class ChapterController extends Controller
      */
     public function show(Novel $novel, $chapterNumber)
     {
-        // Find the chapter - only show published chapters to public
-        $chapter = Chapter::where('novel_id', $novel->id)
-            ->where('chapter_number', $chapterNumber)
-            ->whereIn('status', [Chapter::STATUS_APPROVED, Chapter::STATUS_PENDING_UPDATE])
-            ->whereNotNull('published_at')
-            ->first();
+        return $this->showChapter($novel, (int) $chapterNumber, null);
+    }
 
-        if (!$chapter) {
-            return response()->json([
-                'message' => 'Chapter not found'
-            ], 404);
+    public function showByVolume(Novel $novel, $volumeNumber, $chapterNumber)
+    {
+        return $this->showChapter($novel, (int) $chapterNumber, (int) $volumeNumber);
+    }
+
+    private function showChapter(Novel $novel, int $chapterNumber, ?int $volumeNumber)
+    {
+        if ($novel->uses_volumes && $volumeNumber === null) {
+            return response()->json(['message' => 'Chapter not found'], 404);
         }
 
-        // Increment view count silently without updating updated_at
+        if (!$novel->uses_volumes && $volumeNumber !== null) {
+            return response()->json(['message' => 'Chapter not found'], 404);
+        }
+
+        $chapter = ChapterOrderHelper::resolveChapter($novel, $chapterNumber, $volumeNumber, publishedOnly: true);
+
+        if (!$chapter) {
+            return response()->json(['message' => 'Chapter not found'], 404);
+        }
+
+        $chapter->loadMissing('novel', 'volume:id,volume_number,title');
+
         $chapter->timestamps = false;
         $chapter->increment('views');
         $chapter->timestamps = true;
 
-        // Cache the navigation data (previous/next chapters) for 1 hour - only published chapters
-        $cacheKey = "chapter_nav_{$novel->id}_{$chapterNumber}_published";
+        $cacheKey = "chapter_nav_{$novel->id}_{$volumeNumber}_{$chapterNumber}_published";
 
         $navigation = CacheHelper::remember($cacheKey, now()->addHour(), function () use ($novel, $chapter) {
-            // Get previous published chapter
-            $previousChapter = Chapter::where('novel_id', $novel->id)
-                ->where('chapter_number', '<', $chapter->chapter_number)
-                ->whereIn('status', [Chapter::STATUS_APPROVED, Chapter::STATUS_PENDING_UPDATE])
-                ->whereNotNull('published_at')
-                ->orderBy('chapter_number', 'desc')
-                ->first();
-
-            // Get next published chapter
-            $nextChapter = Chapter::where('novel_id', $novel->id)
-                ->where('chapter_number', '>', $chapter->chapter_number)
-                ->whereIn('status', [Chapter::STATUS_APPROVED, Chapter::STATUS_PENDING_UPDATE])
-                ->whereNotNull('published_at')
-                ->orderBy('chapter_number', 'asc')
-                ->first();
-
-            return [
-                'previous_chapter' => $previousChapter ? $previousChapter->chapter_number : null,
-                'next_chapter' => $nextChapter ? $nextChapter->chapter_number : null,
-            ];
+            return $this->buildPublishedNavigation($novel, $chapter);
         }, ["chapter_nav_{$novel->id}"]);
 
-        // Merge navigation data with fresh chapter data
-        $chapterData = $chapter->toArray();
-        $chapterData['previous_chapter'] = $navigation['previous_chapter'];
-        $chapterData['next_chapter'] = $navigation['next_chapter'];
+        $chapterData = array_merge($chapter->toArray(), $navigation);
 
         return response()->json([
             'message' => 'Chapter details',
@@ -354,6 +491,7 @@ class ChapterController extends Controller
                 'title' => $novel->title,
                 'slug' => $novel->slug,
                 'author' => $novel->author,
+                'uses_volumes' => $novel->uses_volumes,
             ],
             'chapter' => $chapterData,
         ], 200);
@@ -391,6 +529,8 @@ class ChapterController extends Controller
             'title' => 'sometimes|required|string|max:255',
             'content' => 'sometimes|required|string',
             'chapter_number' => 'sometimes|integer|min:1',
+            'volume_id' => 'nullable|integer|exists:volumes,id',
+            'volume_number' => 'nullable|integer|min:1',
             'is_free' => 'sometimes|boolean',
             'published_at' => 'nullable|date',
             'save_as_draft' => 'boolean'
@@ -398,10 +538,27 @@ class ChapterController extends Controller
 
         // Check if new chapter number conflicts with existing chapters
         if ($request->has('chapter_number') && $request->chapter_number !== $chapter->chapter_number) {
-            $existingChapter = Chapter::where('novel_id', $novel->id)
+            $targetVolumeId = $chapter->volume_id;
+
+            if ($request->filled('volume_id')) {
+                $targetVolume = Volume::where('id', $request->volume_id)->where('novel_id', $novel->id)->first();
+                if (!$targetVolume) {
+                    return response()->json(['message' => 'Invalid volume for this novel'], 422);
+                }
+                $targetVolumeId = $targetVolume->id;
+            }
+
+            $existingChapterQuery = Chapter::where('novel_id', $novel->id)
                 ->where('chapter_number', $request->chapter_number)
-                ->where('id', '!=', $chapter->id)
-                ->first();
+                ->where('id', '!=', $chapter->id);
+
+            if ($novel->uses_volumes) {
+                $existingChapterQuery->where('volume_id', $targetVolumeId);
+            } else {
+                $existingChapterQuery->whereNull('volume_id');
+            }
+
+            $existingChapter = $existingChapterQuery->first();
 
             if ($existingChapter) {
                 return response()->json([
@@ -417,7 +574,7 @@ class ChapterController extends Controller
         // Handle different scenarios based on chapter status and user role
         if ($user->isAdmin()) {
             // Admins can directly update any chapter
-            $updateData = $request->only(['title', 'content', 'chapter_number', 'is_free', 'published_at']);
+            $updateData = $request->only(['title', 'content', 'chapter_number', 'is_free', 'published_at', 'volume_id']);
 
             if ($request->has('content')) {
                 $updateData['word_count'] = str_word_count(strip_tags($request->content));
@@ -458,7 +615,7 @@ class ChapterController extends Controller
 
         } else {
             // Draft or revision_requested - can edit directly
-            $updateData = $request->only(['title', 'content', 'chapter_number', 'is_free']);
+            $updateData = $request->only(['title', 'content', 'chapter_number', 'is_free', 'volume_id']);
 
             if ($request->has('content')) {
                 $updateData['word_count'] = str_word_count(strip_tags($request->content));
@@ -611,5 +768,147 @@ class ChapterController extends Controller
         foreach ($userIds as $userId) {
             \App\Models\Notification::createNewChapterNotification($userId, $novel, $chapter);
         }
+    }
+
+    private function buildPublicChapterList(Novel $novel): array
+    {
+        $publishedQuery = Chapter::query()
+            ->where('chapters.novel_id', $novel->id)
+            ->whereIn('chapters.status', [Chapter::STATUS_APPROVED, Chapter::STATUS_PENDING_UPDATE])
+            ->whereNotNull('chapters.published_at')
+            ->with('volume:id,volume_number,title');
+
+        $chapters = ChapterOrderHelper::readingOrderQuery($novel, $publishedQuery)->get();
+
+        if ($novel->uses_volumes) {
+            return [
+                'uses_volumes' => true,
+                'volumes' => $this->groupChaptersByVolume($chapters),
+                'chapters' => $chapters->map(fn (Chapter $c) => ChapterOrderHelper::formatChapterSummary($c))->values(),
+            ];
+        }
+
+        return [
+            'uses_volumes' => false,
+            'chapters' => $chapters->map(fn (Chapter $c) => ChapterOrderHelper::formatChapterSummary($c))->values(),
+        ];
+    }
+
+    private function groupChaptersByVolume($chapters, bool $includeStatus = false): array
+    {
+        $grouped = [];
+
+        foreach ($chapters as $chapter) {
+            $volume = $chapter->volume;
+            $volumeId = $volume?->id ?? 0;
+
+            if (!isset($grouped[$volumeId])) {
+                $grouped[$volumeId] = [
+                    'id' => $volume?->id,
+                    'novel_id' => $chapter->novel_id,
+                    'volume_number' => $volume?->volume_number ?? 0,
+                    'title' => $volume?->title ?? 'Uncategorized',
+                    'description' => $volume?->description,
+                    'chapters' => [],
+                ];
+            }
+
+            $chapterData = $includeStatus
+                ? $this->formatAuthorChapter($chapter)
+                : ChapterOrderHelper::formatChapterSummary($chapter);
+
+            $grouped[$volumeId]['chapters'][] = $chapterData;
+        }
+
+        return collect($grouped)
+            ->sortBy('volume_number')
+            ->values()
+            ->map(function (array $volume) {
+                $volume['chapters'] = collect($volume['chapters'])->values();
+                return $volume;
+            })
+            ->all();
+    }
+
+    private function formatAuthorChapter(Chapter $chapter): array
+    {
+        $data = ChapterOrderHelper::formatChapterSummary($chapter);
+        $data['status'] = $chapter->status;
+        $data['reviewed_at'] = $chapter->reviewed_at;
+        $data['created_at'] = $chapter->created_at;
+        $data['published_at'] = $chapter->published_at;
+
+        if ($chapter->relationLoaded('latestReview') && $chapter->latestReview) {
+            $data['latest_review'] = $chapter->latestReview;
+        }
+
+        return $data;
+    }
+
+    private function buildPublishedNavigation(Novel $novel, Chapter $chapter): array
+    {
+        $previousChapter = ChapterOrderHelper::adjacentPublishedChapter($novel, $chapter, 'previous');
+        $nextChapter = ChapterOrderHelper::adjacentPublishedChapter($novel, $chapter, 'next');
+
+        return $this->formatNavigation($novel, $previousChapter, $nextChapter);
+    }
+
+    private function buildAuthorNavigation(Novel $novel, Chapter $chapter): array
+    {
+        $chapters = ChapterOrderHelper::chaptersInReadingOrder(
+            $novel,
+            Chapter::query()->where('chapters.novel_id', $novel->id)->with('volume:id,volume_number')
+        );
+
+        $index = $chapters->search(fn (Chapter $c) => $c->id === $chapter->id);
+        $previousChapter = $index !== false && $index > 0 ? $chapters->get($index - 1) : null;
+        $nextChapter = $index !== false ? $chapters->get($index + 1) : null;
+
+        return $this->formatNavigation($novel, $previousChapter, $nextChapter);
+    }
+
+    private function formatNavigation(Novel $novel, ?Chapter $previousChapter, ?Chapter $nextChapter): array
+    {
+        if ($novel->uses_volumes) {
+            return [
+                'previous_chapter' => $previousChapter?->chapter_number,
+                'previous_volume' => $previousChapter?->volume?->volume_number,
+                'next_chapter' => $nextChapter?->chapter_number,
+                'next_volume' => $nextChapter?->volume?->volume_number,
+            ];
+        }
+
+        return [
+            'previous_chapter' => $previousChapter?->chapter_number,
+            'next_chapter' => $nextChapter?->chapter_number,
+        ];
+    }
+
+    /**
+     * @return Volume|false|null  Volume model, null for flat novels, false on validation error
+     */
+    private function resolveVolumeForChapter(Novel $novel, Request $request): Volume|false|null
+    {
+        if (!$novel->uses_volumes) {
+            if ($request->filled('volume_id') || $request->filled('volume_number')) {
+                return false;
+            }
+
+            return null;
+        }
+
+        if ($request->filled('volume_id')) {
+            $volume = Volume::where('id', $request->volume_id)->where('novel_id', $novel->id)->first();
+            return $volume ?: false;
+        }
+
+        if ($request->filled('volume_number')) {
+            $volume = Volume::where('novel_id', $novel->id)
+                ->where('volume_number', $request->volume_number)
+                ->first();
+            return $volume ?: false;
+        }
+
+        return false;
     }
 }

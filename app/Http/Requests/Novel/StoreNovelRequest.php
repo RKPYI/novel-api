@@ -19,6 +19,7 @@ class StoreNovelRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'cover_image' => ['nullable', 'url'],
             'status' => ['nullable', 'in:ongoing,completed,hiatus'],
+            'uses_volumes' => ['nullable', 'boolean'],
             'genres' => ['nullable', 'array'],
             'genres.*' => ['exists:genres,id'],
         ];

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\ChapterOrderHelper;
 use App\Models\Comment;
 use App\Models\CommentVote;
 use App\Models\Novel;
@@ -16,16 +17,18 @@ class CommentController extends Controller
     /**
      * Get comments for a novel or chapter
      */
-    public function index(Request $request, Novel $novel, $chapterNumber = null): JsonResponse
+    public function index(Request $request, Novel $novel, $chapterNumber = null, $volumeNumber = null): JsonResponse
     {
         $baseQuery = Comment::where('novel_id', $novel->id)
             ->where('is_approved', true);
 
         if ($chapterNumber) {
-            // Find chapter by chapter_number within this novel
-            $chapter = Chapter::where('chapter_number', $chapterNumber)
-                ->where('novel_id', $novel->id)
-                ->first();
+            $chapter = ChapterOrderHelper::resolveChapter(
+                $novel,
+                (int) $chapterNumber,
+                $volumeNumber !== null ? (int) $volumeNumber : null,
+                publishedOnly: false
+            );
 
             if (!$chapter) {
                 return response()->json([

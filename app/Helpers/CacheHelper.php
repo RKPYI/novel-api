@@ -77,6 +77,7 @@ class CacheHelper
             'novels_popular',
             'novels_latest',
             'novels_recently_updated',
+            'novels_recently_updated_v2',
             'novels_recommendations',
             'genres_all'
         ];
@@ -87,6 +88,9 @@ class CacheHelper
 
         if ($novelId) {
             $keys[] = "chapters_novel_{$novelId}";
+            $keys[] = "chapters_novel_{$novelId}_published";
+            $keys[] = "volumes_novel_{$novelId}";
+            $keys[] = "volumes_novel_{$novelId}_published";
         }
 
         // Also need to clear paginated index caches, but we can't know all possible combinations

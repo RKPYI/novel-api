@@ -465,10 +465,26 @@ class EditorController extends Controller
         $editorId = $request->user()->id;
         $perPage = $request->query('per_page', 15);
 
-        $reviews = ChapterReview::with(['chapter:id,title,chapter_number,novel_id', 'chapter.novel:id,title,slug'])
+        $reviews = ChapterReview::with([
+                'chapter:id,title,chapter_number,novel_id,volume_id',
+                'chapter.volume:id,volume_number',
+                'chapter.novel:id,title,slug,uses_volumes',
+            ])
             ->where('editor_id', $editorId)
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
+
+        $reviews->getCollection()->transform(function (ChapterReview $review) {
+            if ($review->chapter) {
+                $review->chapter->setAttribute(
+                    'volume_number',
+                    $review->chapter->volume?->volume_number
+                );
+                $review->chapter->makeHidden(['volume', 'volume_id']);
+            }
+
+            return $review;
+        });
 
         return response()->json([
             'message' => 'Review history retrieved successfully',

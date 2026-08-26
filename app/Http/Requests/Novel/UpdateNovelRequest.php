@@ -19,6 +19,7 @@ class UpdateNovelRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'cover_image' => ['nullable', 'url'],
             'status' => ['sometimes', 'in:ongoing,completed,hiatus'],
+            'uses_volumes' => ['sometimes', 'boolean'],
             'genres' => ['sometimes', 'array'],
             'genres.*' => ['exists:genres,id'],
         ];
