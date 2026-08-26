@@ -393,8 +393,11 @@ class ChapterController extends Controller
         $saveAsDraft = $request->boolean('save_as_draft', false);
 
         if ($user->isAdmin()) {
+            // Admin create is publish: default published_at to now unless a schedule date is sent
             $status = Chapter::STATUS_APPROVED;
-            $publishedAt = $request->published_at ? now() : null;
+            $publishedAt = $request->filled('published_at')
+                ? $request->date('published_at')
+                : now();
         } elseif ($saveAsDraft) {
             $status = Chapter::STATUS_DRAFT;
             $publishedAt = null;
