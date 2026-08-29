@@ -191,5 +191,5 @@ Key route entry points live in `routes/api.php`, with controllers grouped under 
 
 ## Related repositories
 
-- Frontend: https://github.com/RKPYI/novel-frontend
+- Frontend: https://github.com/RKPYI/rantale
 - Backend API: this repository
