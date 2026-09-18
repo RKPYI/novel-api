@@ -12,9 +12,29 @@ class GlossaryObservation extends Model
         'normalized_name', 'fact_key', 'value', 'quote', 'context', 'confidence', 'payload',
     ];
 
+    protected $hidden = ['quote_hash'];
+
     protected $casts = ['confidence' => 'float', 'payload' => 'array'];
 
-    public function run(): BelongsTo { return $this->belongsTo(GlossaryExtractionRun::class, 'extraction_run_id'); }
-    public function chapter(): BelongsTo { return $this->belongsTo(Chapter::class); }
-    public function novel(): BelongsTo { return $this->belongsTo(Novel::class); }
+    protected static function booted(): void
+    {
+        static::saving(function (self $observation): void {
+            $observation->quote_hash = hash('sha256', $observation->quote);
+        });
+    }
+
+    public function run(): BelongsTo
+    {
+        return $this->belongsTo(GlossaryExtractionRun::class, 'extraction_run_id');
+    }
+
+    public function chapter(): BelongsTo
+    {
+        return $this->belongsTo(Chapter::class);
+    }
+
+    public function novel(): BelongsTo
+    {
+        return $this->belongsTo(Novel::class);
+    }
 }

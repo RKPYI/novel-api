@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('fact_key', 100);
             $table->text('value');
             $table->text('quote');
+            $table->char('quote_hash', 64);
             $table->text('context')->nullable();
             $table->decimal('confidence', 5, 4)->default(0);
             $table->json('payload')->nullable();
@@ -26,7 +27,7 @@ return new class extends Migration
 
             $table->index(['novel_id', 'normalized_name', 'fact_key']);
             $table->unique(
-                ['extraction_run_id', 'entity_type', 'normalized_name', 'fact_key', 'quote'],
+                ['extraction_run_id', 'entity_type', 'normalized_name', 'fact_key', 'quote_hash'],
                 'glossary_observation_identity_unique'
             );
         });

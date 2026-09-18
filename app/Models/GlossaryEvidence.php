@@ -11,7 +11,16 @@ class GlossaryEvidence extends Model
 
     protected $fillable = ['fact_id', 'chapter_id', 'quote', 'context', 'confidence'];
 
+    protected $hidden = ['quote_hash'];
+
     protected $casts = ['confidence' => 'float'];
+
+    protected static function booted(): void
+    {
+        static::saving(function (self $evidence): void {
+            $evidence->quote_hash = hash('sha256', $evidence->quote);
+        });
+    }
 
     public function fact(): BelongsTo
     {

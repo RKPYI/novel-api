@@ -47,11 +47,12 @@ return new class extends Migration
             $table->foreignId('fact_id')->constrained('glossary_facts')->cascadeOnDelete();
             $table->foreignId('chapter_id')->constrained()->cascadeOnDelete();
             $table->text('quote');
+            $table->char('quote_hash', 64);
             $table->text('context')->nullable();
             $table->decimal('confidence', 5, 4)->default(0);
             $table->timestamps();
 
-            $table->unique(['fact_id', 'chapter_id', 'quote']);
+            $table->unique(['fact_id', 'chapter_id', 'quote_hash']);
             $table->index(['chapter_id', 'fact_id']);
         });
 
