@@ -4,14 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Novel;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
-use Tests\TestCase;
 
-class NovelModuleTest extends TestCase
+class NovelModuleTest extends FeatureTestCase
 {
-    use RefreshDatabase;
-
     public function test_author_can_create_novel_and_author_fallback_uses_user_name(): void
     {
         $author = $this->makeUserWithRole(User::ROLE_AUTHOR);
@@ -127,22 +123,47 @@ class NovelModuleTest extends TestCase
         $this->assertDatabaseHas('novels', ['id' => $foreignNovel->id]);
     }
 
-    private function makeUserWithRole(int $role, array $attributes = []): User
+    public function test_author_can_delete_own_novel(): void
     {
-        return User::factory()->create(array_merge([
-            'role' => $role,
-            'provider' => 'email',
-        ], $attributes));
+        $author = $this->makeUserWithRole(User::ROLE_AUTHOR);
+        $novel = $this->makeNovelFor($author, ['title' => 'Delete Me']);
+
+        Sanctum::actingAs($author);
+
+        $this->deleteJson("/api/novels/{$novel->slug}")
+            ->assertOk()
+            ->assertJsonPath('message', 'Novel deleted successfully');
+
+        $this->assertDatabaseMissing('novels', ['id' => $novel->id]);
     }
 
-    private function makeNovelFor(User $user, array $attributes = []): Novel
+    public function test_get_novel_show_returns_404_for_missing_slug(): void
     {
-        return Novel::create(array_merge([
-            'user_id' => $user->id,
-            'title' => 'Novel ' . fake()->unique()->words(3, true),
-            'author' => $user->name,
-            'description' => 'Description',
-            'status' => 'ongoing',
-        ], $attributes));
+        $this->getJson('/api/novels/unknown-novel-slug')
+            ->assertNotFound()
+            ->assertJsonPath('message', 'Novel not found');
+    }
+
+    public function test_search_returns_matching_novels_for_query(): void
+    {
+        $this->makeNovelFor($this->makeUserWithRole(User::ROLE_AUTHOR), ['title' => 'Dragon Blade Chronicles']);
+        $this->makeNovelFor($this->makeUserWithRole(User::ROLE_AUTHOR), ['title' => 'Moonlight Journal']);
+
+        $this->getJson('/api/novels/search?q=dragon')
+            ->assertOk()
+            ->assertJsonPath('message', 'Search results for: dragon')
+            ->assertJsonFragment(['title' => 'Dragon Blade Chronicles']);
+    }
+
+    public function test_index_can_filter_by_status(): void
+    {
+        $author = $this->makeUserWithRole(User::ROLE_AUTHOR);
+        $this->makeNovelFor($author, ['title' => 'Ongoing Story', 'status' => 'ongoing']);
+        $this->makeNovelFor($author, ['title' => 'Completed Story', 'status' => 'completed']);
+
+        $this->getJson('/api/novels?status=ongoing')
+            ->assertOk()
+            ->assertJsonPath('message', 'List of novels')
+            ->assertJsonFragment(['title' => 'Ongoing Story']);
     }
 }

@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Jobs\ExtractChapterGlossary;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use App\Helpers\CacheHelper;
 use App\Helpers\ChapterOrderHelper;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Chapter extends Model
 {
@@ -44,6 +47,21 @@ class Chapter extends Model
     public function readingProgress()
     {
         return $this->hasMany(ReadingProgress::class);
+    }
+
+    public function glossaryEvidence()
+    {
+        return $this->hasMany(GlossaryEvidence::class);
+    }
+
+    public function glossaryExtractionRuns(): HasMany
+    {
+        return $this->hasMany(GlossaryExtractionRun::class);
+    }
+
+    public function latestGlossaryExtractionRun(): HasOne
+    {
+        return $this->hasOne(GlossaryExtractionRun::class)->latestOfMany('id');
     }
 
     public function comments()
@@ -270,6 +288,17 @@ class Chapter extends Model
                     $chapter->chapter_number,
                     $chapter->novel->slug
                 );
+            }
+
+            if (
+                $chapter->isPublished()
+                && (
+                    $chapter->wasChanged('content')
+                    || ($chapter->wasChanged('status') && $chapter->status === self::STATUS_APPROVED)
+                    || $chapter->wasChanged('published_at')
+                )
+            ) {
+                ExtractChapterGlossary::dispatch($chapter->id)->afterCommit();
             }
         });
 

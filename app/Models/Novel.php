@@ -65,6 +65,16 @@ class Novel extends Model
         return $this->hasMany(ReadingProgress::class);
     }
 
+    public function glossaryEntities()
+    {
+        return $this->hasMany(GlossaryEntity::class);
+    }
+
+    public function glossaryFacts()
+    {
+        return $this->hasMany(GlossaryFact::class);
+    }
+
     public function comments()
     {
         return $this->hasMany(Comment::class)->where('is_approved', true);

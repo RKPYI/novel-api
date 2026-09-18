@@ -3,16 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Laravel\Sanctum\Sanctum;
-use Tests\TestCase;
+use Laravel\Socialite\Facades\Socialite;
+use Mockery;
 
-class AuthModuleTest extends TestCase
+class AuthModuleTest extends FeatureTestCase
 {
-    use RefreshDatabase;
-
     public function test_register_creates_user_and_returns_token(): void
     {
         Notification::fake();
@@ -138,5 +136,113 @@ class AuthModuleTest extends TestCase
         ]);
 
         $response->assertStatus(400)->assertJsonPath('message', 'Current password is incorrect');
+    }
+
+    public function test_logout_revokes_current_token(): void
+    {
+        $user = $this->makeUserWithRole(User::ROLE_USER);
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson('/api/auth/logout')
+            ->assertOk()
+            ->assertJsonPath('message', 'Logged out successfully');
+
+        $this->assertSame(0, $user->fresh()->tokens()->count());
+    }
+
+    public function test_me_returns_current_user_details(): void
+    {
+        $user = $this->makeUserWithRole(User::ROLE_AUTHOR, [
+            'bio' => 'Author bio',
+            'email_verified_at' => now(),
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->getJson('/api/auth/me')
+            ->assertOk()
+            ->assertJsonPath('user.email', $user->email)
+            ->assertJsonPath('user.is_admin', false)
+            ->assertJsonPath('user.role', User::ROLE_AUTHOR);
+    }
+
+    public function test_change_password_updates_password_successfully(): void
+    {
+        $user = $this->makeUserWithRole(User::ROLE_USER, [
+            'password' => Hash::make('CurrentPass123'),
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $response = $this->putJson('/api/auth/change-password', [
+            'current_password' => 'CurrentPass123',
+            'new_password' => 'NewSecurePass123',
+            'new_password_confirmation' => 'NewSecurePass123',
+        ]);
+
+        $response->assertOk()->assertJsonPath('message', 'Password changed successfully');
+        $this->assertTrue(Hash::check('NewSecurePass123', $user->fresh()->password));
+    }
+
+    public function test_email_verification_notification_and_resend_routes_are_supported(): void
+    {
+        Notification::fake();
+
+        $user = $this->makeUserWithRole(User::ROLE_USER, [
+            'email_verified_at' => null,
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->postJson('/api/auth/email/verification-notification')
+            ->assertOk()
+            ->assertJsonPath('message', 'Verification email sent successfully');
+
+        $this->postJson('/api/auth/email/resend-verification')
+            ->assertOk()
+            ->assertJsonPath('message', 'Verification email resent successfully');
+    }
+
+    public function test_google_redirect_returns_auth_url(): void
+    {
+        $driver = Mockery::mock();
+        $driver->shouldReceive('stateless')->andReturnSelf();
+        $driver->shouldReceive('redirect')->andReturn(new class
+        {
+            public function getTargetUrl(): string
+            {
+                return 'https://accounts.google.com/o/oauth2/auth';
+            }
+        });
+
+        Socialite::shouldReceive('driver')->with('google')->andReturn($driver);
+
+        $this->getJson('/api/auth/google')
+            ->assertOk()
+            ->assertJsonPath('url', 'https://accounts.google.com/o/oauth2/auth');
+    }
+
+    public function test_google_callback_redirects_with_success_payload(): void
+    {
+        $googleUser = new class
+        {
+            public function getEmail(): string { return 'google@example.com'; }
+            public function getName(): string { return 'Google User'; }
+            public function getId(): string { return 'google-123'; }
+            public function getAvatar(): string { return 'https://example.com/avatar.png'; }
+        };
+
+        $driver = Mockery::mock();
+        $driver->shouldReceive('stateless')->andReturnSelf();
+        $driver->shouldReceive('user')->andReturn($googleUser);
+
+        Socialite::shouldReceive('driver')->with('google')->andReturn($driver);
+
+        $response = $this->get('/api/auth/google/callback');
+
+        $response->assertRedirect();
+        $this->assertStringContainsString('success=true', $response->getTargetUrl());
+        $this->assertStringContainsString('token=', $response->getTargetUrl());
     }
 }

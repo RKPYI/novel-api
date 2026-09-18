@@ -33,6 +33,7 @@ This service handles the platform's data and business logic for a novel publishi
 - Structured chapter and volume management with workflow states
 - Search, sorting, recommendations, and related-content APIs
 - Queue, cache, and background processing support for production workloads
+- Spoiler-safe, chapter-stamped AI glossary extraction for characters, items, places, skills, systems, and world facts
 
 ## Tech stack
 
@@ -112,10 +113,37 @@ DB_PASSWORD=
 FRONTEND_URL=http://localhost:3000
 SANCTUM_STATEFUL_DOMAINS=localhost,localhost:3000,127.0.0.1,127.0.0.1:8000
 
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_API_KEY=your_openrouter_key
+# Recommended pinned free model with response_format support
+OPENROUTER_MODEL=deepseek/deepseek-v4-flash-0731:free
+OPENROUTER_TEMPERATURE=0.1
+OPENROUTER_MAX_TOKENS=6000
+OPENROUTER_TIMEOUT=120
+OPENROUTER_MAX_RETRIES=3
+OPENROUTER_REASONING_EFFORT=none
+GLOSSARY_RUN_STALE_AFTER=600
+GLOSSARY_HIGH_CONFIDENCE_THRESHOLD=0.85
+
 GOOGLE_CLIENT_ID=your_google_client_id_here
 GOOGLE_CLIENT_SECRET=your_google_client_secret_here
 GOOGLE_REDIRECT_URI=https://your.api.url/api/auth/google/callback
 ```
+
+Glossary extraction stores chapter observations separately from canonical entities and facts. The reconciliation layer automatically applies unambiguous evidence and new facts, while contradictory values, uncertain identity matches, and merge candidates become admin proposals. Admin corrections are authoritative and recorded in immutable change history.
+
+Admin glossary manager endpoints include:
+
+- `GET /api/admin/novels/{slug}/glossary/proposals`
+- `POST /api/admin/novels/{slug}/glossary/proposals/{id}/decision`
+- `PATCH /api/admin/novels/{slug}/glossary/facts/{id}`
+- `PATCH /api/admin/novels/{slug}/glossary/entities/{id}`
+- `PATCH /api/admin/novels/{slug}/glossary/evidence/{id}`
+- `POST /api/admin/novels/{slug}/glossary/entities/merge`
+- `GET /api/admin/novels/{slug}/glossary/history`
+- `POST /api/admin/novels/{slug}/glossary/history/{id}/rollback`
+
+Conflict proposals are optionally assessed by a queued AI adjudicator. Its recommendation is advisory only; an admin approval or rejection is required before canonical data changes.
 
 ## Available commands
 
@@ -126,6 +154,32 @@ php artisan migrate
 php artisan queue:listen
 php artisan storage:link
 ```
+
+## AI glossary processing
+
+Published chapters are queued for glossary extraction when they are first published or when their published content changes. The worker uses OpenRouter and stores canonical entities, atomic facts, immutable chapter evidence quotes, extraction runs, and review history. Facts below the configured confidence threshold or facts that change later remain pending review instead of silently replacing the prior interpretation.
+
+Run a complete backfill as an authenticated admin:
+
+```http
+POST /api/admin/novels/{slug}/glossary/scan
+```
+
+Inspect or review uncertain facts:
+
+```http
+GET  /api/admin/novels/{slug}/glossary/pending
+POST /api/admin/novels/{slug}/glossary/{fact}/review
+```
+
+Readers use:
+
+```http
+GET /api/novels/{slug}/glossary
+GET /api/novels/{slug}/glossary/{fact}
+```
+
+Reader responses are filtered server-side to the user's furthest recorded chapter. The API never exposes an active fact unless it has evidence from a chapter at or before that boundary. A reader without progress receives no glossary facts; this prevents an omitted client parameter from becoming a spoiler bypass.
 
 ## Documentation
 

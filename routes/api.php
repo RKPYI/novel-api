@@ -16,6 +16,9 @@ use App\Http\Controllers\ReadingProgressController;
 use App\Http\Controllers\VolumeController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserLibraryController;
+use App\Http\Controllers\GlossaryController;
+use App\Http\Controllers\GlossaryManagerController;
+use App\Http\Controllers\StoryCompanionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\DB;
@@ -135,6 +138,30 @@ Route::get('novels/{novel:slug}/volumes/{volumeNumber}/chapters/{chapterNumber}'
 
 // Volume routes - read operations
 Route::get('novels/{novel:slug}/volumes', [VolumeController::class, 'index']);
+
+// Spoiler-safe glossary routes
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('novels/{novel:slug}/glossary', [GlossaryController::class, 'index']);
+    Route::get('novels/{novel:slug}/glossary/{fact}', [GlossaryController::class, 'show']);
+    Route::post('novels/{novel:slug}/story-companion', [StoryCompanionController::class, 'ask'])->middleware('throttle:10,1');
+});
+
+Route::middleware(['auth:sanctum', 'admin'])->group(function () {
+    Route::get('admin/glossary/novels', [GlossaryController::class, 'novels']);
+    Route::post('admin/novels/{novel:slug}/glossary/scan', [GlossaryController::class, 'startScan']);
+    Route::post('admin/novels/{novel:slug}/glossary/resume', [GlossaryController::class, 'resumeScan']);
+    Route::get('admin/novels/{novel:slug}/glossary/pending', [GlossaryController::class, 'pending']);
+    Route::post('admin/novels/{novel:slug}/glossary/{fact}/review', [GlossaryController::class, 'review']);
+    Route::post('admin/novels/{novel:slug}/glossary/review-bulk', [GlossaryController::class, 'bulkReview']);
+    Route::get('admin/novels/{novel:slug}/glossary/proposals', [GlossaryManagerController::class, 'proposals']);
+    Route::post('admin/novels/{novel:slug}/glossary/proposals/{proposal}/decision', [GlossaryManagerController::class, 'decideProposal']);
+    Route::patch('admin/novels/{novel:slug}/glossary/facts/{fact}', [GlossaryManagerController::class, 'updateFact']);
+    Route::patch('admin/novels/{novel:slug}/glossary/entities/{entity}', [GlossaryManagerController::class, 'updateEntity']);
+    Route::patch('admin/novels/{novel:slug}/glossary/evidence/{evidence}', [GlossaryManagerController::class, 'updateEvidence']);
+    Route::post('admin/novels/{novel:slug}/glossary/entities/merge', [GlossaryManagerController::class, 'mergeEntities']);
+    Route::get('admin/novels/{novel:slug}/glossary/history', [GlossaryManagerController::class, 'history']);
+    Route::post('admin/novels/{novel:slug}/glossary/history/{history}/rollback', [GlossaryManagerController::class, 'rollback']);
+});
 
 // Chapter routes - author operations (create/edit/delete and manage workflow)
 Route::middleware(['auth:sanctum', 'author'])->group(function () {
