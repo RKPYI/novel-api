@@ -94,7 +94,7 @@ class GlossaryReconciliationService
                             'last_seen_chapter_id' => $chapter->id,
                             'last_updated_at' => now(),
                         ])->save();
-                    } elseif ($fact->authority === 'admin' || $fact->status === 'active') {
+                    } elseif ($this->shouldTriggerConflictReview($fact, $factData, $oldValue)) {
                         $this->proposal($chapter, $observation, $entity, $fact, $factData, $oldValue);
                     } else {
                         $fact->previous_value = $oldValue;
@@ -142,6 +142,74 @@ class GlossaryReconciliationService
         if ($proposal->wasRecentlyCreated) {
             AdjudicateGlossaryProposal::dispatch($proposal->id)->afterCommit();
         }
+    }
+
+    private function shouldTriggerConflictReview(GlossaryFact $fact, array $factData, string $oldValue): bool
+    {
+        if ($fact->authority === 'admin') {
+            return true;
+        }
+
+        $oldValue = strtolower(trim((string) $oldValue));
+        $newValue = strtolower(trim((string) data_get($factData, 'value', '')));
+        if ($oldValue === '' || $newValue === '' || $oldValue === $newValue) {
+            return false;
+        }
+
+        if ($this->looksLikeDifferentFactCategory($oldValue, $newValue)) {
+            return false;
+        }
+
+        if ($this->looksLikeNarrativeRevision($newValue)) {
+            return false;
+        }
+
+        if ($fact->status !== 'active') {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function looksLikeDifferentFactCategory(string $oldValue, string $newValue): bool
+    {
+        $residenceSignals = ['lives in', 'resides in', 'home', 'yard', 'shabby', 'dwells', 'house', 'living place'];
+        $punishmentSignals = ['punished', 'punishment', 'sea', 'boat', 'sentence', 'imprisonment', 'jail', 'captured', 'banished'];
+
+        $oldMatchesResidence = $this->containsAny($oldValue, $residenceSignals);
+        $newMatchesPunishment = $this->containsAny($newValue, $punishmentSignals);
+        if ($oldMatchesResidence && $newMatchesPunishment) {
+            return true;
+        }
+
+        $oldMatchesPunishment = $this->containsAny($oldValue, $punishmentSignals);
+        $newMatchesResidence = $this->containsAny($newValue, $residenceSignals);
+        if ($oldMatchesPunishment && $newMatchesResidence) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function looksLikeNarrativeRevision(string $value): bool
+    {
+        $revisionSignals = [
+            'actually', 'later revealed', 'later it is revealed', 'in the end', 'as it turns out',
+            'it was later', 'revealed that', 'afterward', 'eventually', 'then', 'finally', 'was in fact',
+        ];
+
+        return $this->containsAny($value, $revisionSignals);
+    }
+
+    private function containsAny(string $value, array $tokens): bool
+    {
+        foreach ($tokens as $token) {
+            if (str_contains($value, $token)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function statusFor(float $confidence): string

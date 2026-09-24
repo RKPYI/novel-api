@@ -9,7 +9,7 @@ class GlossaryProposal extends Model
 {
     protected $fillable = [
         'novel_id', 'observation_id', 'entity_id', 'fact_id', 'operation', 'status',
-        'ai_recommendation', 'ai_explanation', 'confidence', 'before_data', 'after_data', 'reason',
+        'ai_recommendation', 'ai_explanation', 'classification', 'confidence', 'before_data', 'after_data', 'reason',
     ];
 
     protected $casts = [

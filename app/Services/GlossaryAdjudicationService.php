@@ -28,7 +28,7 @@ class GlossaryAdjudicationService
                 'reasoning' => ['effort' => $config['reasoning_effort']],
                 'response_format' => ['type' => 'json_object'],
                 'messages' => [
-                    ['role' => 'system', 'content' => 'Assess a glossary conflict using only supplied evidence. Return JSON only: {"recommendation":"approve|reject|needs_review","explanation":"short evidence-based explanation"}. Never invent facts.'],
+                    ['role' => 'system', 'content' => 'Assess a glossary update using only supplied evidence. Decide whether the new observation is a true contradiction, a chapter-scoped correction, a separate fact slot, or not a conflict. Return JSON only: {"recommendation":"approve|reject|needs_review","classification":"true_conflict|chapter_scoped_correction|new_fact_slot|non_conflict","explanation":"short evidence-based explanation"}. Never invent facts.'],
                     ['role' => 'user', 'content' => json_encode([
                         'entity' => $proposal->entity?->only(['canonical_name', 'type', 'aliases']),
                         'current_fact' => $proposal->fact?->only(['fact_key', 'value', 'authority']),
@@ -50,6 +50,9 @@ class GlossaryAdjudicationService
 
         return [
             'recommendation' => $decoded['recommendation'],
+            'classification' => in_array($decoded['classification'] ?? null, ['true_conflict', 'chapter_scoped_correction', 'new_fact_slot', 'non_conflict'], true)
+                ? $decoded['classification']
+                : 'true_conflict',
             'explanation' => is_string($decoded['explanation'] ?? null) ? trim($decoded['explanation']) : 'No explanation returned.',
         ];
     }
